@@ -1,3 +1,23 @@
+# Python
 __pycache__/
+*.pyc
 .venv/
 .env
+*.egg-info/
+build/
+dist/
+
+# C++ Build Products
+*.exe
+*.o
+*.out
+
+# Development stage files (these are moved when packing)
+# But keep tests/ in Polygon format problems
+temp/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+.claude/

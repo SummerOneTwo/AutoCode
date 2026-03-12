@@ -1,0 +1,20 @@
+[project]
+name = "acmgo-agent"
+version = "0.1.0"
+description = "AI-assisted competitive programming problem setter for ACMGO"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.45.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+dev = ["pytest>=8.0.0", "black>=24.0.0", "isort>=5.0.0", "mypy>=1.0.0"]
+
+[project.scripts]
+acmgo-agent = "acmgo_agent.cli.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
