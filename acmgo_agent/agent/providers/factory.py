@@ -42,7 +42,12 @@ def create_provider(
         from .litellm import LiteLLMProvider
         if model is None:
             model = kwargs.get("model", "anthropic/claude-opus-4-6")
-        return LiteLLMProvider(api_key=api_key, model=model, **kwargs)
+        return LiteLLMProvider(
+            api_key=api_key,
+            model=model,
+            rate_limit_min_interval=kwargs.get("rate_limit_min_interval", 0.05),
+            **{k: v for k, v in kwargs.items() if k != "rate_limit_min_interval"}
+        )
     else:
         raise ValueError(
             f"Unknown provider: {provider_name}. "

@@ -81,6 +81,11 @@ class AgentSettings:
         default_factory=lambda: int(os.getenv("ACMGO_TEST_COUNT", "20"))
     )
 
+    # Rate Limiting Settings
+    rate_limit_min_interval: float = field(
+        default_factory=lambda: float(os.getenv("ACMGO_RATE_LIMIT_MIN_INTERVAL", "0.05"))
+    )
+
     # Working Directory
     work_dir: str = field(
         default_factory=lambda: os.getenv("ACMGO_WORK_DIR", "./problems/new_problem")
@@ -119,7 +124,7 @@ class AgentSettings:
         """
         从字典创建设置。
 
-        环境 fanc 变量用作未在 dict 中的值的默认值。
+        环境变量用作未在 dict 中的值的默认值。
         """
         env_settings = cls.from_env().__dict__
 
