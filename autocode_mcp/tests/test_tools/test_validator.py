@@ -3,9 +3,10 @@ Validator 工具组测试。
 """
 import os
 import tempfile
-import pytest
-from autocode_mcp.tools.validator import ValidatorBuildTool, ValidatorSelectTool
 
+import pytest
+
+from autocode_mcp.tools.validator import ValidatorBuildTool, ValidatorSelectTool
 
 # 简单的 Validator 代码（基于 testlib.h）
 VALIDATOR_CODE = '''

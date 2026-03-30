@@ -5,9 +5,9 @@ Checker 工具组 - 输出检查器。
 """
 import os
 import sys
-from typing import Optional
-from .base import Tool, ToolResult
+
 from ..utils.compiler import compile_cpp, run_binary_with_args
+from .base import Tool, ToolResult
 
 
 class CheckerBuildTool(Tool):
@@ -74,7 +74,7 @@ class CheckerBuildTool(Tool):
         self,
         problem_dir: str,
         code: str,
-        test_scenarios: Optional[list[dict]] = None,
+        test_scenarios: list[dict] | None = None,
         compiler: str = "g++",
     ) -> ToolResult:
         """执行 Checker 构建。"""

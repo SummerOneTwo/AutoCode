@@ -3,7 +3,9 @@ File 工具组测试。
 """
 import os
 import tempfile
+
 import pytest
+
 from autocode_mcp.tools.file_ops import FileReadTool, FileSaveTool
 
 
@@ -24,7 +26,7 @@ async def test_file_save():
         assert os.path.exists(result.data["path"])
 
         # 验证内容
-        with open(result.data["path"], "r") as f:
+        with open(result.data["path"]) as f:
             assert f.read() == "Hello, World!"
 
 

@@ -4,25 +4,23 @@ MCP Server 入口。
 提供 14 个原子工具，基于 AutoCode 论文框架。
 """
 import asyncio
-import sys
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, Resource, Prompt
+from mcp.types import Prompt, Resource, TextContent, Tool
 
-from .tools.base import Tool as BaseTool, ToolResult
+from . import prompts, resources
+from .tools.base import Tool as BaseTool
+from .tools.base import ToolResult
+from .tools.checker import CheckerBuildTool
 from .tools.file_ops import FileReadTool, FileSaveTool
+from .tools.generator import GeneratorBuildTool, GeneratorRunTool
+from .tools.interactor import InteractorBuildTool
+from .tools.problem import ProblemCreateTool, ProblemGenerateTestsTool, ProblemPackPolygonTool
 from .tools.solution import SolutionBuildTool, SolutionRunTool
 from .tools.stress_test import StressTestRunTool
-from .tools.problem import ProblemCreateTool, ProblemGenerateTestsTool, ProblemPackPolygonTool
 from .tools.validator import ValidatorBuildTool, ValidatorSelectTool
-from .tools.generator import GeneratorBuildTool, GeneratorRunTool
-from .tools.checker import CheckerBuildTool
-from .tools.interactor import InteractorBuildTool
-from . import resources
-from . import prompts
-
 
 # 创建 MCP Server 实例
 app = Server("autocode-mcp")
@@ -143,7 +141,7 @@ async def read_resource(uri: str) -> str:
         template_name = uri[11:]
         path = resources.get_template_path(template_name)
         if path:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return f.read()
         return f"Template not found: {template_name}"
     return f"Unknown resource: {uri}"

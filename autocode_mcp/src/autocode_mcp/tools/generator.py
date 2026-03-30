@@ -3,12 +3,12 @@ Generator 工具组 - 数据生成器。
 
 基于论文 Algorithm 2: BUILDGENERATORSUITE 实现。
 """
+import hashlib
 import os
 import sys
-import hashlib
-from typing import Optional
-from .base import Tool, ToolResult
+
 from ..utils.compiler import compile_cpp, run_binary, run_binary_with_args
+from .base import Tool, ToolResult
 
 
 class GeneratorBuildTool(Tool):
@@ -146,7 +146,7 @@ class GeneratorRunTool(Tool):
         problem_dir: str,
         strategies: list[str],
         test_count: int = 20,
-        validator_path: Optional[str] = None,
+        validator_path: str | None = None,
         seed_start: int = 1,
         n_min: int = 1,
         n_max: int = 100000,

@@ -5,9 +5,9 @@ Interactor 工具组 - 交互器。
 """
 import os
 import sys
-from typing import Optional
+
+from ..utils.compiler import compile_cpp
 from .base import Tool, ToolResult
-from ..utils.compiler import compile_cpp, run_binary
 
 
 class InteractorBuildTool(Tool):
@@ -66,8 +66,8 @@ class InteractorBuildTool(Tool):
         self,
         problem_dir: str,
         code: str,
-        reference_solution_path: Optional[str] = None,
-        mutant_solutions: Optional[list[str]] = None,
+        reference_solution_path: str | None = None,
+        mutant_solutions: list[str] | None = None,
         compiler: str = "g++",
     ) -> ToolResult:
         """执行 Interactor 构建。"""

@@ -3,9 +3,9 @@ Solution 工具组 - 解法构建和运行。
 """
 import os
 import sys
-from typing import Optional
-from .base import Tool, ToolResult
+
 from ..utils.compiler import compile_cpp, run_binary
+from .base import Tool, ToolResult
 
 
 class SolutionBuildTool(Tool):

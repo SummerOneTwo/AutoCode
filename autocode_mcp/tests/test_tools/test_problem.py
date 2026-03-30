@@ -3,10 +3,11 @@ Problem 工具组测试。
 """
 import os
 import tempfile
+
 import pytest
+
 from autocode_mcp.tools.problem import (
     ProblemCreateTool,
-    ProblemGenerateTestsTool,
     ProblemPackPolygonTool,
 )
 
@@ -46,7 +47,7 @@ async def test_problem_create_readme():
         readme_path = os.path.join(problem_dir, "statements", "README.md")
         assert os.path.exists(readme_path)
 
-        with open(readme_path, "r", encoding="utf-8") as f:
+        with open(readme_path, encoding="utf-8") as f:
             content = f.read()
             assert "README Test" in content
 
@@ -99,7 +100,7 @@ async def test_problem_pack_polygon_creates_xml():
         xml_path = os.path.join(problem_dir, "problem.xml")
         assert os.path.exists(xml_path)
 
-        with open(xml_path, "r") as f:
+        with open(xml_path) as f:
             content = f.read()
             assert "2000" in content  # time_limit
             assert "536870912" in content  # memory_limit

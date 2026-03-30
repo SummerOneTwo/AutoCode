@@ -2,7 +2,7 @@
 文件操作工具。
 """
 import os
-from typing import Optional
+
 from .base import Tool, ToolResult
 
 
@@ -39,7 +39,7 @@ class FileReadTool(Tool):
             "required": ["path"],
         }
 
-    async def execute(self, path: str, problem_dir: Optional[str] = None) -> ToolResult:
+    async def execute(self, path: str, problem_dir: str | None = None) -> ToolResult:
         """执行文件读取。"""
         # 解析路径
         if not os.path.isabs(path) and problem_dir:
@@ -54,7 +54,7 @@ class FileReadTool(Tool):
             return ToolResult.fail(f"Not a file: {path}")
 
         try:
-            with open(full_path, "r", encoding="utf-8") as f:
+            with open(full_path, encoding="utf-8") as f:
                 content = f.read()
 
             return ToolResult.ok(
@@ -107,7 +107,7 @@ class FileSaveTool(Tool):
         self,
         path: str,
         content: str,
-        problem_dir: Optional[str] = None,
+        problem_dir: str | None = None,
     ) -> ToolResult:
         """执行文件保存。"""
         # 解析路径

@@ -4,12 +4,11 @@ AutoCode MCP Resources 模块。
 提供题目文件、测试数据、配置等资源访问。
 """
 import os
-from typing import Optional
 
 from .. import TEMPLATES_DIR
 
 
-def get_template_path(name: str) -> Optional[str]:
+def get_template_path(name: str) -> str | None:
     """
     获取模板文件路径。
 
@@ -37,7 +36,7 @@ def list_templates() -> list[str]:
     return os.listdir(TEMPLATES_DIR)
 
 
-def get_problem_resource_path(problem_dir: str, resource_type: str) -> Optional[str]:
+def get_problem_resource_path(problem_dir: str, resource_type: str) -> str | None:
     """
     获取题目资源路径。
 

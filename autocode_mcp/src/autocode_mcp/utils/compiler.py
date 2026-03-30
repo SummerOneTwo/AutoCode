@@ -6,14 +6,12 @@
 - 资源限制
 - 临时目录隔离
 """
+import asyncio
 import os
+import shutil
 import sys
 import uuid
-import asyncio
-import subprocess
-import shutil
 from dataclasses import dataclass
-from typing import Optional
 
 from .. import TEMPLATES_DIR
 
@@ -22,8 +20,8 @@ from .. import TEMPLATES_DIR
 class CompileResult:
     """编译结果。"""
     success: bool
-    binary_path: Optional[str] = None
-    error: Optional[str] = None
+    binary_path: str | None = None
+    error: str | None = None
     stdout: str = ""
     stderr: str = ""
 
@@ -35,7 +33,7 @@ class RunResult:
     return_code: int = -1
     stdout: str = ""
     stderr: str = ""
-    error: Optional[str] = None
+    error: str | None = None
     timed_out: bool = False
     time_ms: int = 0
 
@@ -70,7 +68,7 @@ async def compile_cpp(
     compiler: str = "g++",
     std: str = "c++2c",
     opt_level: str = "O2",
-    include_dirs: Optional[list[str]] = None,
+    include_dirs: list[str] | None = None,
 ) -> CompileResult:
     """
     编译 C++ 文件，带超时控制。
@@ -132,7 +130,7 @@ async def compile_cpp(
                 process.communicate(),
                 timeout=timeout
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
             return CompileResult(
@@ -220,7 +218,7 @@ async def run_binary(
                 process.communicate(input=stdin.encode("utf-8")),
                 timeout=timeout
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
             return RunResult(
@@ -306,7 +304,7 @@ async def run_binary_with_args(
                 process.communicate(input=stdin.encode("utf-8") if stdin else None),
                 timeout=timeout
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
             return RunResult(

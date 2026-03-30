@@ -3,9 +3,10 @@ Generator 工具组测试。
 """
 import os
 import tempfile
-import pytest
-from autocode_mcp.tools.generator import GeneratorBuildTool, GeneratorRunTool
 
+import pytest
+
+from autocode_mcp.tools.generator import GeneratorBuildTool, GeneratorRunTool
 
 # 简单的 Generator 代码（基于 testlib.h）
 GENERATOR_CODE = '''

@@ -5,9 +5,9 @@ Validator 工具组 - 数据校验器。
 """
 import os
 import sys
-from typing import Optional
-from .base import Tool, ToolResult
+
 from ..utils.compiler import compile_cpp, run_binary
+from .base import Tool, ToolResult
 
 
 class ValidatorBuildTool(Tool):
@@ -69,7 +69,7 @@ class ValidatorBuildTool(Tool):
         self,
         problem_dir: str,
         code: str,
-        test_cases: Optional[list[dict]] = None,
+        test_cases: list[dict] | None = None,
         compiler: str = "g++",
     ) -> ToolResult:
         """执行 Validator 构建。"""

@@ -3,9 +3,10 @@ Checker 工具组测试。
 """
 import os
 import tempfile
-import pytest
-from autocode_mcp.tools.checker import CheckerBuildTool
 
+import pytest
+
+from autocode_mcp.tools.checker import CheckerBuildTool
 
 # 简单的 Checker 代码（基于 testlib.h）
 CHECKER_CODE = '''

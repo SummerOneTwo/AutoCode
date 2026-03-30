@@ -6,9 +6,9 @@ Stress Test 工具 - 对拍测试。
 import os
 import sys
 import tempfile
-from typing import Optional
+
+from ..utils.compiler import run_binary
 from .base import Tool, ToolResult
-from ..utils.compiler import compile_cpp, run_binary
 
 
 class StressTestRunTool(Tool):
@@ -89,8 +89,6 @@ class StressTestRunTool(Tool):
 
         with tempfile.TemporaryDirectory(dir=problem_dir) as temp_dir:
             input_path = os.path.join(temp_dir, "input.txt")
-            sol_out_path = os.path.join(temp_dir, "sol.out")
-            brute_out_path = os.path.join(temp_dir, "brute.out")
 
             for i in range(1, trials + 1):
                 # 1. 生成输入数据
@@ -115,7 +113,7 @@ class StressTestRunTool(Tool):
 
                 # 2. 验证输入（如果有 validator）
                 if os.path.exists(val_exe):
-                    with open(input_path, "r") as f:
+                    with open(input_path) as f:
                         input_data = f.read()
                     val_result = await run_binary(val_exe, input_data, timeout=timeout)
                     if val_result.returncode != 0:
@@ -125,7 +123,7 @@ class StressTestRunTool(Tool):
                         break
 
                 # 3. 运行 sol
-                with open(input_path, "r") as f:
+                with open(input_path) as f:
                     input_data = f.read()
                 sol_result = await run_binary(sol_exe, input_data, timeout=timeout)
                 if sol_result.timed_out or not sol_result.success:

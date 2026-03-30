@@ -3,9 +3,10 @@ Solution 工具组测试。
 """
 import os
 import tempfile
-import pytest
-from autocode_mcp.tools.solution import SolutionBuildTool, SolutionRunTool
 
+import pytest
+
+from autocode_mcp.tools.solution import SolutionBuildTool, SolutionRunTool
 
 # 简单的 C++ 代码用于测试
 SIMPLE_CPP = '''

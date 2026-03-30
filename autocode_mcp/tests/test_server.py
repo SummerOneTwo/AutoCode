@@ -1,7 +1,6 @@
 """
 AutoCode MCP Server 测试。
 """
-import pytest
 
 
 def test_import():
@@ -70,20 +69,20 @@ def test_tool_base():
 def test_all_tools_registered():
     """测试所有工具都能正确注册。"""
     from autocode_mcp.tools import (
+        CheckerBuildTool,
         FileReadTool,
         FileSaveTool,
-        SolutionBuildTool,
-        SolutionRunTool,
-        StressTestRunTool,
+        GeneratorBuildTool,
+        GeneratorRunTool,
+        InteractorBuildTool,
         ProblemCreateTool,
         ProblemGenerateTestsTool,
         ProblemPackPolygonTool,
+        SolutionBuildTool,
+        SolutionRunTool,
+        StressTestRunTool,
         ValidatorBuildTool,
         ValidatorSelectTool,
-        GeneratorBuildTool,
-        GeneratorRunTool,
-        CheckerBuildTool,
-        InteractorBuildTool,
     )
 
     tools = [

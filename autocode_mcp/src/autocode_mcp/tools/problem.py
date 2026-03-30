@@ -4,9 +4,9 @@ Problem 工具组 - 题目管理。
 import os
 import shutil
 import sys
-from typing import Optional
+
+from ..utils.compiler import run_binary
 from .base import Tool, ToolResult
-from ..utils.compiler import compile_cpp, run_binary
 
 
 class ProblemCreateTool(Tool):
@@ -196,7 +196,7 @@ class ProblemGenerateTestsTool(Tool):
             ("4", "4", "10", "50", "1", "3"),
         ])
 
-        for i, config in enumerate(test_configs[:test_count], 1):
+        for i, _config in enumerate(test_configs[:test_count], 1):
             test_file = os.path.join(tests_dir, f"{i:02d}.in")
             ans_file = os.path.join(tests_dir, f"{i:02d}.ans")
 

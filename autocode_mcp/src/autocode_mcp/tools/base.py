@@ -1,9 +1,8 @@
 """
 工具基类和统一返回值格式。
 """
-from dataclasses import dataclass, field
-from typing import Any, Optional
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -17,7 +16,7 @@ class ToolResult:
         data: 工具特定的结果数据
     """
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
     data: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -30,12 +29,12 @@ class ToolResult:
         return result
 
     @classmethod
-    def ok(cls, **data) -> "ToolResult":
+    def ok(cls, **data) -> ToolResult:
         """创建成功的返回结果。"""
         return cls(success=True, data=data)
 
     @classmethod
-    def fail(cls, error: str, **data) -> "ToolResult":
+    def fail(cls, error: str, **data) -> ToolResult:
         """创建失败的返回结果。"""
         return cls(success=False, error=error, data=data)
 
