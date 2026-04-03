@@ -3,6 +3,7 @@ Generator 工具组 - 数据生成器。
 
 基于论文 Algorithm 2: BUILDGENERATORSUITE 实现。
 """
+
 import hashlib
 import os
 
@@ -137,6 +138,26 @@ class GeneratorRunTool(Tool):
                     "description": "随机种子起始值",
                     "default": 1,
                 },
+                "n_min": {
+                    "type": "integer",
+                    "description": "N 最小值",
+                    "default": 1,
+                },
+                "n_max": {
+                    "type": "integer",
+                    "description": "N 最大值",
+                    "default": 100000,
+                },
+                "t_min": {
+                    "type": "integer",
+                    "description": "T 最小值",
+                    "default": 1,
+                },
+                "t_max": {
+                    "type": "integer",
+                    "description": "T 最大值",
+                    "default": 1,
+                },
             },
             "required": ["problem_dir", "strategies"],
         }
@@ -215,11 +236,13 @@ class GeneratorRunTool(Tool):
                 if val_result.return_code != 0:
                     continue
 
-            generated_inputs.append({
-                "input": input_data,
-                "strategy": strategy,
-                "seed": seed,
-            })
+            generated_inputs.append(
+                {
+                    "input": input_data,
+                    "strategy": strategy,
+                    "seed": seed,
+                }
+            )
             seed += 1
 
         return ToolResult.ok(

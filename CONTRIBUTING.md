@@ -1,6 +1,6 @@
-# 贡献指南 (Contributing to ACMGO)
+# 贡献指南 (Contributing to AutoCode)
 
-由于 ACMGO 是一个旨在产出自动化高质量竞赛题目的辅助工具和 SOP 集合，我们非常珍惜所有形式的建议和改进。
+由于 AutoCode 是一个旨在产出自动化高质量竞赛题目的辅助工具和 SOP 集合，我们非常珍惜所有形式的建议和改进。
 
 ## 提交 Issue
 

@@ -136,7 +136,7 @@ async def compile_cpp(
             await process.wait()
             return CompileResult(
                 success=False,
-                error=f"Compilation timeout after {timeout}s",
+                error=f"Compilation timeout after {timeout}s. Consider increasing timeout or simplifying source code.",
             )
 
         if process.returncode != 0:
@@ -207,7 +207,7 @@ async def _run_process(
             return RunResult(
                 success=False,
                 timed_out=True,
-                error=f"Execution timeout after {timeout}s",
+                error=f"Execution timeout after {timeout}s. The program may contain an infinite loop or the input data may be too large.",
                 time_ms=int((time.time() - start_time) * 1000),
             )
 

@@ -1,6 +1,7 @@
 """
 Generator 工具组测试。
 """
+
 import os
 import tempfile
 
@@ -9,7 +10,7 @@ import pytest
 from autocode_mcp.tools.generator import GeneratorBuildTool, GeneratorRunTool
 
 # 简单的 Generator 代码（基于 testlib.h）
-GENERATOR_CODE = '''
+GENERATOR_CODE = """
 #include "testlib.h"
 #include <iostream>
 
@@ -37,7 +38,7 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-'''
+"""
 
 
 @pytest.mark.asyncio
@@ -133,3 +134,31 @@ async def test_generator_run_not_found():
 
         assert not result.success
         assert "not found" in result.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_generator_run_with_custom_params():
+    """测试使用自定义 n_min/n_max 参数运行 Generator。"""
+    build_tool = GeneratorBuildTool()
+    run_tool = GeneratorRunTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        await build_tool.execute(problem_dir=tmpdir, code=GENERATOR_CODE)
+
+        run_result = await run_tool.execute(
+            problem_dir=tmpdir,
+            strategies=["random"],
+            test_count=3,
+            n_min=5,
+            n_max=10,
+            t_min=1,
+            t_max=1,
+        )
+
+        assert run_result.success
+        assert run_result.data["generated_count"] == 3
+        # 验证生成的数据在预期范围内
+        for inp in run_result.data["inputs"]:
+            lines = inp["input"].strip().split("\n")
+            n = int(lines[0])
+            assert 5 <= n <= 10

@@ -3,6 +3,7 @@ Interactor 工具组 - 交互器。
 
 基于论文 Algorithm 4: BUILDINTERACTOR 实现。
 """
+
 import asyncio
 import os
 
@@ -111,9 +112,7 @@ class InteractorBuildTool(Tool):
             pass_total = 1
             # 运行交互测试：参考解应该被接受
             test_result = await self._run_interactor_test(
-                interactor_exe=binary_path,
-                solution_exe=reference_solution_path,
-                timeout=10
+                interactor_exe=binary_path, solution_exe=reference_solution_path, timeout=10
             )
             if test_result["verdict"] == "AC":
                 pass_count = 1
@@ -127,9 +126,7 @@ class InteractorBuildTool(Tool):
                 if os.path.exists(mutant_path):
                     # 运行交互测试：变异解应该被拒绝
                     test_result = await self._run_interactor_test(
-                        interactor_exe=binary_path,
-                        solution_exe=mutant_path,
-                        timeout=10
+                        interactor_exe=binary_path, solution_exe=mutant_path, timeout=10
                     )
                     # 交互器返回 WA 或其他非 AC 结果表示拒绝
                     if test_result.get("verdict") != "AC":
@@ -201,9 +198,9 @@ class InteractorBuildTool(Tool):
                 done, pending = await asyncio.wait(
                     [
                         asyncio.create_task(self._communicate(interactor, solution)),
-                        asyncio.create_task(asyncio.sleep(timeout))
+                        asyncio.create_task(asyncio.sleep(timeout)),
                     ],
-                    return_when=asyncio.FIRST_COMPLETED
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
 
                 # 检查是否超时
@@ -249,25 +246,72 @@ class InteractorBuildTool(Tool):
         solution: asyncio.subprocess.Process,
     ) -> dict:
         """
-        在交互器和解法之间建立通信。
+        在交互器和解法之间建立双向通信管道。
 
-        简化版本：假设交互器通过 exit code 返回判断结果
-        0 = AC, 1 = WA, 其他 = RE
+        interactor.stdout -> solution.stdin
+        solution.stdout -> interactor.stdin
         """
+
+        async def pipe_data(reader, writer, name: str):
+            """从 reader 读取数据并写入 writer"""
+            try:
+                while True:
+                    data = await reader.read(4096)
+                    if not data:
+                        break
+                    writer.write(data)
+                    await writer.drain()
+            except asyncio.CancelledError, ConnectionResetError, BrokenPipeError, OSError:
+                pass
+
+        pipe_tasks = []
         try:
-            # 等待交互器完成
-            await interactor.wait()
+            # 启动双向管道
+            pipe_tasks = [
+                asyncio.create_task(
+                    pipe_data(interactor.stdout, solution.stdin, "interactor->solution")
+                ),
+                asyncio.create_task(
+                    pipe_data(solution.stdout, interactor.stdin, "solution->interactor")
+                ),
+            ]
 
-            # 根据交互器的返回码判断结果
-            if interactor.returncode == 0:
-                return {"verdict": "AC", "reason": "Accepted"}
-            elif interactor.returncode == 1:
-                return {"verdict": "WA", "reason": "Wrong answer"}
-            else:
-                return {
-                    "verdict": "RE",
-                    "reason": f"Runtime error (exit code: {interactor.returncode})"
-                }
+            # 等待任一进程完成
+            await asyncio.wait(
+                [interactor.wait(), solution.wait()],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        except NotImplementedError:
+            # Windows 上可能不支持某些 asyncio 功能
+            pass
+        finally:
+            # 取消管道任务
+            for task in pipe_tasks:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
-        except Exception as e:
-            return {"verdict": "RE", "reason": str(e)}
+            # 清理进程
+            for proc in [interactor, solution]:
+                if proc.returncode is None:
+                    try:
+                        proc.kill()
+                    except ProcessLookupError, OSError:
+                        pass
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=2)
+                except TimeoutError, OSError:
+                    pass
+
+        # 根据交互器退出码判断结果
+        if interactor.returncode == 0:
+            return {"verdict": "AC", "reason": "Accepted"}
+        elif interactor.returncode == 1:
+            return {"verdict": "WA", "reason": "Wrong answer"}
+        else:
+            return {
+                "verdict": "RE",
+                "reason": f"Runtime error (exit code: {interactor.returncode})",
+            }

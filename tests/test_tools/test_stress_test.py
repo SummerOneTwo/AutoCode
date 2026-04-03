@@ -1,6 +1,8 @@
 """
 Stress Test 工具组测试。
 """
+
+import os
 import tempfile
 
 import pytest
@@ -8,9 +10,10 @@ import pytest
 from autocode_mcp.tools.generator import GeneratorBuildTool
 from autocode_mcp.tools.solution import SolutionBuildTool
 from autocode_mcp.tools.stress_test import StressTestRunTool
+from autocode_mcp.utils.platform import get_exe_extension
 
 # 简单的 C++ 代码用于测试
-SIMPLE_CPP = '''
+SIMPLE_CPP = """
 #include <iostream>
 using namespace std;
 
@@ -20,9 +23,9 @@ int main() {
     cout << a + b << endl;
     return 0;
 }
-'''
+"""
 
-BRUTE_CPP = '''
+BRUTE_CPP = """
 #include <iostream>
 using namespace std;
 
@@ -36,9 +39,9 @@ int main() {
     cout << sum << endl;
     return 0;
 }
-'''
+"""
 
-GENERATOR_CODE = '''
+GENERATOR_CODE = """
 #include "testlib.h"
 #include <iostream>
 
@@ -64,7 +67,7 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-'''
+"""
 
 
 @pytest.mark.asyncio
@@ -136,3 +139,89 @@ async def test_stress_test_missing_generator():
 
         assert not result.success
         assert "generator" in result.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_stress_test_passes():
+    """测试对拍通过的情况。"""
+    tool = StressTestRunTool()
+    build_tool = SolutionBuildTool()
+    gen_tool = GeneratorBuildTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        simple_gen = """
+#include "testlib.h"
+#include <iostream>
+int main(int argc, char* argv[]) {
+    registerGen(argc, argv, 1);
+    int seed = atoi(argv[1]);
+    rnd.setSeed(seed);
+    int a = rnd.next(1, 10);
+    int b = rnd.next(1, 10);
+    std::cout << a << " " << b << std::endl;
+    return 0;
+}
+"""
+        simple_sol = """
+#include <iostream>
+int main() {
+    int a, b;
+    std::cin >> a >> b;
+    std::cout << a + b << std::endl;
+    return 0;
+}
+"""
+        await gen_tool.execute(problem_dir=tmpdir, code=simple_gen)
+        await build_tool.execute(problem_dir=tmpdir, solution_type="sol", code=simple_sol)
+        await build_tool.execute(problem_dir=tmpdir, solution_type="brute", code=simple_sol)
+
+        result = await tool.execute(problem_dir=tmpdir, trials=5)
+
+        assert result.success
+        assert result.data["completed_rounds"] == 5
+
+
+@pytest.mark.asyncio
+async def test_generate_input_different_seeds():
+    """验证不同 seed 生成不同的输入数据。"""
+    import shutil
+
+    if not shutil.which("g++"):
+        pytest.skip("g++ not available")
+
+    tool = StressTestRunTool()
+    gen_tool = GeneratorBuildTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        simple_gen = """
+#include "testlib.h"
+#include <iostream>
+int main(int argc, char* argv[]) {
+    registerGen(argc, argv, 1);
+    int seed = atoi(argv[1]);
+    rnd.setSeed(seed);
+    int a = rnd.next(1, 1000);
+    int b = rnd.next(1, 1000);
+    std::cout << a << " " << b << std::endl;
+    return 0;
+}
+"""
+        build_result = await gen_tool.execute(problem_dir=tmpdir, code=simple_gen)
+        assert build_result.success
+
+        exe_ext = get_exe_extension()
+        gen_exe = os.path.join(tmpdir, f"gen{exe_ext}")
+        input_path = os.path.join(tmpdir, "input.txt")
+
+        # 用不同 seed 生成输入
+        inputs = []
+        for seed in [1, 2, 3, 4, 5]:
+            result = await tool._generate_input(
+                gen_exe, input_path, round_num=seed, seed=seed, timeout=5
+            )
+            assert result["success"], f"Generator failed with seed {seed}"
+            with open(input_path, encoding="utf-8") as f:
+                inputs.append(f.read())
+
+        # 验证所有输入都不同
+        assert len(set(inputs)) == len(inputs), "Different seeds should produce different inputs"

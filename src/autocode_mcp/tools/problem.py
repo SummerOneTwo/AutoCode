@@ -5,7 +5,7 @@ Problem 工具组 - 题目管理。
 import os
 import shutil
 
-from ..utils.compiler import run_binary
+from ..utils.compiler import run_binary, run_binary_with_args
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
 
@@ -135,6 +135,30 @@ class ProblemGenerateTestsTool(Tool):
                     "description": "单次执行超时（秒）",
                     "default": 60,
                 },
+                "test_configs": {
+                    "type": "array",
+                    "description": "自定义测试配置列表（可选，不提供则使用默认配置）",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "seed_offset": {
+                                "type": "integer",
+                                "description": "种子偏移量",
+                                "default": 0,
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": ["1", "2", "3", "4"],
+                                "description": "生成策略",
+                            },
+                            "n_min": {"type": "integer", "description": "N 最小值"},
+                            "n_max": {"type": "integer", "description": "N 最大值"},
+                            "t_min": {"type": "integer", "description": "T 最小值"},
+                            "t_max": {"type": "integer", "description": "T 最大值"},
+                        },
+                        "required": ["type", "n_min", "n_max", "t_min", "t_max"],
+                    },
+                },
             },
             "required": ["problem_dir"],
         }
@@ -144,6 +168,7 @@ class ProblemGenerateTestsTool(Tool):
         problem_dir: str,
         test_count: int = 20,
         timeout: int = 60,
+        test_configs: list[dict] | None = None,
     ) -> ToolResult:
         """执行测试数据生成。"""
         exe_ext = get_exe_extension()
@@ -172,50 +197,44 @@ class ProblemGenerateTestsTool(Tool):
         generated_tests = []
         errors = []
 
-        # 定义测试配置
-        # (seed_offset, type, n_min, n_max, t_min, t_max)
-        test_configs = []
-
-        # 小数据
-        test_configs.extend([("1", "1", "1", "10", "1", "3")] * 3)
-
-        # 随机数据
-        test_configs.extend(
-            [
-                ("2", "2", "10", "100", "1", "3"),
-                ("2", "2", "100", "1000", "1", "3"),
-                ("2", "2", "1000", "5000", "1", "3"),
-                ("2", "2", "5000", "10000", "1", "3"),
+        # 获取测试配置
+        if test_configs:
+            test_configs_list = [
+                (
+                    str(c.get("seed_offset", 0)),
+                    c["type"],
+                    str(c["n_min"]),
+                    str(c["n_max"]),
+                    str(c["t_min"]),
+                    str(c["t_max"]),
+                )
+                for c in test_configs
             ]
-        )
+        else:
+            test_configs_list = self._get_default_configs()
 
-        # 大数据
-        test_configs.extend(
-            [
-                ("3", "3", "100000", "200000", "1", "1"),
-                ("3", "3", "150000", "200000", "1", "1"),
-            ]
-        )
-
-        # 边界数据
-        test_configs.extend(
-            [
-                ("4", "4", "10", "50", "1", "3"),
-            ]
-        )
-
-        for i, _config in enumerate(test_configs[:test_count], 1):
+        for i, config in enumerate(test_configs_list[:test_count], 1):
             test_file = os.path.join(tests_dir, f"{i:02d}.in")
             ans_file = os.path.join(tests_dir, f"{i:02d}.ans")
 
+            seed_offset, type_param, n_min, n_max, t_min, t_max = config
+            cmd_args = [
+                str(i + int(seed_offset)),
+                type_param,
+                str(n_min),
+                str(n_max),
+                str(t_min),
+                str(t_max),
+            ]
+
             try:
-                # 生成输入
-                gen_result = await run_binary(gen_exe, "", timeout=timeout)
+                # 生成输入（使用配置参数）
+                gen_result = await run_binary_with_args(gen_exe, cmd_args, timeout=timeout)
                 if not gen_result.success:
                     errors.append((i, f"Generator failed: {gen_result.stderr}"))
                     continue
 
-                with open(test_file, "w") as f:
+                with open(test_file, "w", encoding="utf-8") as f:
                     f.write(gen_result.stdout)
 
                 # 生成答案
@@ -224,7 +243,7 @@ class ProblemGenerateTestsTool(Tool):
                     errors.append((i, f"sol failed: {sol_result.stderr}"))
                     continue
 
-                with open(ans_file, "w") as f:
+                with open(ans_file, "w", encoding="utf-8") as f:
                     f.write(sol_result.stdout)
 
                 generated_tests.append(i)
@@ -244,6 +263,35 @@ class ProblemGenerateTestsTool(Tool):
                 generated_tests=generated_tests,
                 errors=errors,
             )
+
+    def _get_default_configs(self) -> list[tuple[str, str, str, str, str, str]]:
+        """获取默认测试配置。
+
+        Returns:
+            配置列表，每项为 (seed_offset, type, n_min, n_max, t_min, t_max)
+        """
+        configs = []
+        # 小数据
+        configs.extend([("1", "1", "1", "10", "1", "3")] * 3)
+        # 随机数据
+        configs.extend(
+            [
+                ("2", "2", "10", "100", "1", "3"),
+                ("2", "2", "100", "1000", "1", "3"),
+                ("2", "2", "1000", "5000", "1", "3"),
+                ("2", "2", "5000", "10000", "1", "3"),
+            ]
+        )
+        # 大数据
+        configs.extend(
+            [
+                ("3", "3", "100000", "200000", "1", "1"),
+                ("3", "3", "150000", "200000", "1", "1"),
+            ]
+        )
+        # 边界数据
+        configs.extend([("4", "4", "10", "50", "1", "3")])
+        return configs
 
 
 class ProblemPackPolygonTool(Tool):
@@ -341,6 +389,14 @@ class ProblemPackPolygonTool(Tool):
         # 5. 创建 problem.xml
         problem_xml = os.path.join(problem_dir, "problem.xml")
         if not os.path.exists(problem_xml):
+            # 动态计算测试数量
+            tests_dir = os.path.join(problem_dir, "tests")
+            if os.path.exists(tests_dir):
+                test_files = [f for f in os.listdir(tests_dir) if f.endswith(".in")]
+                actual_test_count = len(test_files)
+            else:
+                actual_test_count = 0
+
             problem_name = os.path.basename(problem_dir)
             xml_content = f'''<?xml version="1.0" encoding="utf-8" standalone="no"?>
 <problem revision="1" short-name="{problem_name}">
@@ -354,7 +410,7 @@ class ProblemPackPolygonTool(Tool):
         <testset name="tests">
             <time-limit>{time_limit}</time-limit>
             <memory-limit>{memory_limit}</memory-limit>
-            <test-count>20</test-count>
+            <test-count>{actual_test_count}</test-count>
             <input-path-pattern>tests/%02d.in</input-path-pattern>
             <answer-path-pattern>tests/%02d.ans</answer-path-pattern>
         </testset>

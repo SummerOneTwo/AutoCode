@@ -7,7 +7,7 @@ Stress Test 工具 - 对拍测试。
 import os
 import tempfile
 
-from ..utils.compiler import run_binary
+from ..utils.compiler import run_binary, run_binary_with_args
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
 
@@ -93,10 +93,13 @@ class StressTestRunTool(Tool):
 
             for i in range(1, trials + 1):
                 # 1. 生成输入数据
-                gen_result = await self._generate_input(gen_exe, input_path, i, timeout)
+                gen_result = await self._generate_input(
+                    gen_exe, input_path, i, seed=i, timeout=timeout
+                )
                 if not gen_result["success"]:
                     return ToolResult.fail(
-                        gen_result["error"],
+                        f"Generator failed at round {i}: {gen_result.get('error', '')}. "
+                        f"Check that the generator accepts command-line arguments (seed).",
                         round=i,
                         stderr=gen_result.get("stderr", ""),
                     )
@@ -165,18 +168,26 @@ class StressTestRunTool(Tool):
         gen_exe: str,
         input_path: str,
         round_num: int,
+        seed: int,
         timeout: int,
     ) -> dict:
         """
         生成输入数据。
 
+        Args:
+            gen_exe: generator 可执行文件路径
+            input_path: 输入文件保存路径
+            round_num: 当前轮次
+            seed: 随机种子
+            timeout: 超时时间（秒）
+
         Returns:
             dict: {"success": bool, "error": str | None}
         """
         try:
-            gen_result = await run_binary(
+            gen_result = await run_binary_with_args(
                 gen_exe,
-                "",
+                [str(seed)],
                 timeout=timeout,
             )
             if gen_result.timed_out or not gen_result.success:
