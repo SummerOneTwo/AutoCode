@@ -65,7 +65,7 @@ async def test_compile_cpp_success():
         binary_path = os.path.join(tmpdir, "test" + (".exe" if os.name == "nt" else ""))
 
         # 写入源代码
-        with open(source_path, "w") as f:
+        with open(source_path, "w", encoding="utf-8") as f:
             f.write(HELLO_WORLD_CODE)
 
         # 编译
@@ -84,7 +84,7 @@ async def test_compile_cpp_syntax_error():
         binary_path = os.path.join(tmpdir, "test" + (".exe" if os.name == "nt" else ""))
 
         # 写入错误代码
-        with open(source_path, "w") as f:
+        with open(source_path, "w", encoding="utf-8") as f:
             f.write("invalid c++ code {{{")
 
         # 编译
@@ -103,7 +103,7 @@ async def test_compile_cpp_timeout():
         binary_path = os.path.join(tmpdir, "test" + (".exe" if os.name == "nt" else ""))
 
         # 写入源代码
-        with open(source_path, "w") as f:
+        with open(source_path, "w", encoding="utf-8") as f:
             f.write(HELLO_WORLD_CODE)
 
         # 编译（设置极短超时）
@@ -135,7 +135,7 @@ async def test_run_binary_success():
         source_path = os.path.join(tmpdir, "test.cpp")
         binary_path = os.path.join(tmpdir, "test" + (".exe" if os.name == "nt" else ""))
 
-        with open(source_path, "w") as f:
+        with open(source_path, "w", encoding="utf-8") as f:
             f.write(HELLO_WORLD_CODE)
 
         compile_result = await compile_cpp(source_path, binary_path)
@@ -157,7 +157,7 @@ async def test_run_binary_timeout():
         source_path = os.path.join(tmpdir, "test.cpp")
         binary_path = os.path.join(tmpdir, "test" + (".exe" if os.name == "nt" else ""))
 
-        with open(source_path, "w") as f:
+        with open(source_path, "w", encoding="utf-8") as f:
             f.write(INFINITE_LOOP_CODE)
 
         compile_result = await compile_cpp(source_path, binary_path)
@@ -191,7 +191,7 @@ int main() {
         source_path = os.path.join(tmpdir, "test.cpp")
         binary_path = os.path.join(tmpdir, "test" + (".exe" if os.name == "nt" else ""))
 
-        with open(source_path, "w") as f:
+        with open(source_path, "w", encoding="utf-8") as f:
             f.write(stdin_code)
 
         compile_result = await compile_cpp(source_path, binary_path)
@@ -212,7 +212,7 @@ async def test_run_binary_with_args():
         source_path = os.path.join(tmpdir, "test.cpp")
         binary_path = os.path.join(tmpdir, "test" + (".exe" if os.name == "nt" else ""))
 
-        with open(source_path, "w") as f:
+        with open(source_path, "w", encoding="utf-8") as f:
             f.write(ARGS_CODE)
 
         compile_result = await compile_cpp(source_path, binary_path)
@@ -243,7 +243,7 @@ async def test_compile_all_success():
         sources = []
         for i in range(3):
             source_path = os.path.join(tmpdir, f"test{i}.cpp")
-            with open(source_path, "w") as f:
+            with open(source_path, "w", encoding="utf-8") as f:
                 f.write(f"""
 #include <iostream>
 

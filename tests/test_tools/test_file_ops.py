@@ -1,6 +1,7 @@
 """
 File 工具组测试。
 """
+
 import os
 import tempfile
 
@@ -54,7 +55,7 @@ async def test_file_read():
     with tempfile.TemporaryDirectory() as tmpdir:
         # 先创建文件
         test_file = os.path.join(tmpdir, "read_test.txt")
-        with open(test_file, "w") as f:
+        with open(test_file, "w", encoding="utf-8") as f:
             f.write("Test content")
 
         result = await tool.execute(

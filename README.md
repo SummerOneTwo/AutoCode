@@ -140,15 +140,17 @@ Add to your Cursor settings (Settings → MCP):
 }
 ```
 
-### Claude Desktop
+### OpenCode
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Edit `~/.config/opencode/opencode.json`:
 
 ```json
 {
-  "mcpServers": {
-    "autocode": {
-      "command": "autocode-mcp"
+  "mcp": {
+    "servers": {
+      "autocode": {
+        "command": "autocode-mcp"
+      }
     }
   }
 }
