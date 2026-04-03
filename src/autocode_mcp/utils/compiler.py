@@ -178,7 +178,7 @@ async def _run_process(
     start_time = time.time()
 
     try:
-        if sys.platform == "win32":
+        if sys.platform == "win32" or sys.platform == "darwin":
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
