@@ -1,69 +1,542 @@
 # AutoCode MCP Server
 
-基于论文《AutoCode: LLMs as Problem Setters for Competitive Programming》实现的竞赛编程出题辅助 MCP Server。
+[![PyPI version](https://badge.fury.io/py/autocode-mcp.svg)](https://badge.fury.io/py/autocode-mcp)
+[![Python](https://img.shields.io/pypi/pyversions/autocode-mcp.svg)](https://pypi.org/project/autocode-mcp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP](https://img.shields.io/badge/Protocol-MCP-blue.svg)](https://modelcontextprotocol.io/)
 
-## 特性
+**An MCP Server for competitive programming problem creation, implementing the Validator-Generator-Checker framework from the AutoCode paper.**
 
-- **Validator-Generator-Checker 框架**：自动化验证数据正确性
-- **14 个原子工具**：文件操作、解法构建、压力测试等
-- **testlib.h 支持**：完整的 testlib 模板和编译工具
-- **MCP 协议**：支持 Claude Code 等 AI 工具集成
+AutoCode MCP Server provides 14 atomic tools that enable AI assistants to create, validate, and test competitive programming problems. It handles compilation, execution, stress testing, and test data generation—letting the AI focus on problem design and solution logic.
 
-## 安装
+[中文文档](README_CN.md)
+
+## Features
+
+- **Validator-Generator-Checker Framework** — Automated validation of input correctness, multi-strategy test generation, and output verification based on the AutoCode paper
+- **14 Atomic Tools** — File operations, solution building, stress testing, validator/generator/checker construction, and more
+- **testlib.h Support** — Full integration with the competitive programming standard library for validators, generators, and checkers
+- **Multi-Strategy Generation** — Four generation strategies: tiny (exhaustive), random, extreme (edge cases), and TLE-inducing
+- **Stress Testing** — Automated comparison between optimal and brute-force solutions with configurable trial counts
+- **MCP Protocol** — Native support for Claude Code, Cursor, and other MCP-compatible AI tools
+- **Safe Execution** — Timeout control, memory limits (Linux), and temporary directory isolation
+- **Polygon Packaging** — Export problems in Polygon format for Codeforces-style platforms
+
+## Installation
+
+### From PyPI (Recommended)
 
 ```bash
+pip install autocode-mcp
+```
+
+### Using uv
+
+```bash
+uv tool install autocode-mcp
+```
+
+### From Source
+
+```bash
+git clone https://github.com/your-repo/autocode-mcp.git
+cd autocode-mcp
 uv sync
 ```
 
-## 开发
+### Prerequisites
+
+- **Python 3.14+**
+- **g++ compiler** with C++20 support (GCC 10+ recommended)
+- **testlib.h** (included in templates/)
+
+Verify your setup:
 
 ```bash
-# 运行测试
-make test
+# Check Python version
+python --version
 
-# 代码检查
-make lint
+# Check g++ version
+g++ --version
 
-# 类型检查
-make typecheck
-
-# 完整检查
-make check
+# Run tests
+uv run pytest tests/ -v
 ```
 
-## 项目结构
+## Quick Start
+
+### 1. Configure Your MCP Client
+
+Add to your Claude Code configuration (`~/.config/claude-code/config.json`):
+
+```json
+{
+  "mcpServers": {
+    "autocode": {
+      "command": "autocode-mcp"
+    }
+  }
+}
+```
+
+### 2. Create Your First Problem
+
+In Claude Code, simply ask:
+
+> "Create a competitive programming problem: Given two integers A and B, output their sum."
+
+Claude will use AutoCode tools to:
+1. Generate problem statement
+2. Implement solutions (optimal + brute force)
+3. Build validator and generator
+4. Run stress tests
+5. Generate final test data
+
+### 3. Manual Tool Usage
+
+You can also call tools directly:
+
+```python
+# Build a solution
+solution_build(
+    problem_dir="problems/ab",
+    solution_type="sol",
+    code="#include <iostream>\nint main() { int a, b; std::cin >> a >> b; std::cout << a + b; }"
+)
+
+# Run stress test
+stress_test_run(problem_dir="problems/ab", trials=100)
+```
+
+## MCP Client Setup
+
+### Claude Code
+
+Edit `~/.config/claude-code/config.json`:
+
+```json
+{
+  "mcpServers": {
+    "autocode": {
+      "command": "autocode-mcp"
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to your Cursor settings (Settings → MCP):
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "autocode": {
+        "command": "autocode-mcp"
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "autocode": {
+      "command": "autocode-mcp"
+    }
+  }
+}
+```
+
+### From Source (Development)
+
+For development or custom installations:
+
+```json
+{
+  "mcpServers": {
+    "autocode": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/autocode-mcp", "autocode-mcp"]
+    }
+  }
+}
+```
+
+### Verify Installation
+
+After configuration, restart your MCP client and check that tools are available. You should see 14 tools prefixed with `autocode_`.
+
+## Tools Reference
+
+AutoCode provides 14 atomic tools organized into 7 groups. All tools return a unified format:
+
+```json
+{
+  "success": true,
+  "error": null,
+  "data": { ... }
+}
+```
+
+### File Operations
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `file_save` | Save content to a file | `path`, `content` |
+| `file_read` | Read file content | `path` |
+
+### Solution Tools
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `solution_build` | Compile solution code | `problem_dir`, `solution_type` ("sol"/"brute"), `code` |
+| `solution_run` | Execute compiled solution | `problem_dir`, `solution_type`, `input_data`, `timeout` |
+
+### Validator Tools
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `validator_build` | Build and test validator | `problem_dir`, `code`, `test_cases` |
+| `validator_select` | Select best validator from candidates | `candidates` |
+
+### Generator Tools
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `generator_build` | Compile generator | `problem_dir`, `code` |
+| `generator_run` | Generate test inputs | `problem_dir`, `strategies`, `test_count`, `validator_path` |
+
+### Checker Tools
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `checker_build` | Build output checker | `problem_dir`, `code`, `test_scenarios` |
+
+### Interactor Tools
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `interactor_build` | Build interactor for interactive problems | `problem_dir`, `code`, `test_scenarios` |
+
+### Stress Testing
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `stress_test_run` | Compare sol vs brute outputs | `problem_dir`, `trials`, `n_max`, `timeout` |
+
+### Problem Management
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `problem_create` | Initialize problem directory | `problem_dir`, `title`, `time_limit`, `memory_limit` |
+| `problem_generate_tests` | Generate final test data | `problem_dir`, `test_count` |
+| `problem_pack_polygon` | Package for Polygon platform | `problem_dir`, `output_dir` |
+
+## Workflow Tutorial: A+B Problem
+
+This tutorial walks through creating a simple A+B problem using AutoCode tools.
+
+### Step 1: Initialize Problem
+
+```python
+problem_create(
+    problem_dir="problems/ab",
+    title="A + B",
+    time_limit=1000,
+    memory_limit=256
+)
+```
+
+### Step 2: Implement Solutions
+
+**Optimal Solution (sol.cpp):**
+```cpp
+#include <iostream>
+int main() {
+    int a, b;
+    std::cin >> a >> b;
+    std::cout << a + b << std::endl;
+    return 0;
+}
+```
+
+**Brute Force (brute.cpp):**
+```cpp
+#include <iostream>
+int main() {
+    int a, b;
+    std::cin >> a >> b;
+    // Same as optimal for A+B, but could be slower for complex problems
+    std::cout << a + b << std::endl;
+    return 0;
+}
+```
+
+Build both:
+```python
+solution_build(problem_dir="problems/ab", solution_type="sol", code="...")
+solution_build(problem_dir="problems/ab", solution_type="brute", code="...")
+```
+
+### Step 3: Build Validator
+
+```cpp
+#include "testlib.h"
+int main(int argc, char* argv[]) {
+    registerValidation(argc, argv);
+    int a = inf.readInt(-1000, 1000, "a");
+    inf.readSpace();
+    int b = inf.readInt(-1000, 1000, "b");
+    inf.readEoln();
+    inf.readEof();
+    return 0;
+}
+```
+
+Build with test cases:
+```python
+validator_build(
+    problem_dir="problems/ab",
+    code="...",
+    test_cases=[
+        {"input": "1 2\n", "expected_valid": True},
+        {"input": "0 0\n", "expected_valid": True},
+        {"input": "-1000 1000\n", "expected_valid": True},
+        {"input": "1001 0\n", "expected_valid": False},  # out of range
+        {"input": "1 2 3\n", "expected_valid": False},   # extra number
+    ]
+)
+```
+
+### Step 4: Build Generator
+
+```cpp
+#include "testlib.h"
+#include <iostream>
+int main(int argc, char* argv[]) {
+    registerGen(argc, argv, 1);
+    int seed = atoi(argv[1]);
+    int type = atoi(argv[2]);
+    rnd.setSeed(seed);
+    
+    int a = rnd.next(-1000, 1000);
+    int b = rnd.next(-1000, 1000);
+    std::cout << a << " " << b << std::endl;
+    return 0;
+}
+```
+
+Build and run:
+```python
+generator_build(problem_dir="problems/ab", code="...")
+
+generator_run(
+    problem_dir="problems/ab",
+    strategies=["random", "extreme"],
+    test_count=20,
+    validator_path="problems/ab/val.exe"
+)
+```
+
+### Step 5: Stress Test
+
+```python
+stress_test_run(
+    problem_dir="problems/ab",
+    trials=1000,
+    n_max=100,
+    timeout=30
+)
+```
+
+Expected output:
+```
+All 1000 rounds passed
+```
+
+### Step 6: Generate Final Tests
+
+```python
+problem_generate_tests(
+    problem_dir="problems/ab",
+    test_count=50
+)
+```
+
+### Step 7: Package for Polygon
+
+```python
+problem_pack_polygon(
+    problem_dir="problems/ab",
+    output_dir="polygon/ab"
+)
+```
+
+## Architecture
+
+### Validator-Generator-Checker Framework
 
 ```
-AutoCode/
-├── src/autocode_mcp/     # 源代码
-│   ├── tools/            # MCP 工具实现
-│   ├── resources/        # 模板资源
-│   ├── prompts/          # 工作流提示词
-│   └── utils/            # 工具函数
-├── tests/                # 测试用例
-├── templates/            # C++ 模板文件
-└── pyproject.toml        # 项目配置
+┌─────────────────┐
+│  Problem Design │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐     ┌──────────────┐
+│  Solution Build │────►│  Validator   │ Verify input constraints
+│  (sol + brute)  │     └──────────────┘
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐     ┌──────────────┐
+│  Generator      │────►│  Stress Test │ Compare sol vs brute
+│  Multi-strategy │     └──────────────┘
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Checker        │ Verify output correctness
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Polygon Pack   │ Export for platforms
+└─────────────────┘
 ```
 
-## 工具列表
+### Design Principles
 
-| 工具 | 描述 |
-|------|------|
-| FileSaveTool | 保存文件 |
-| FileReadTool | 读取文件 |
-| FileListTool | 列出文件 |
-| SolutionBuildTool | 构建解法 |
-| SolutionTestTool | 测试解法 |
-| StressTestTool | 压力测试 |
-| ProblemInitTool | 初始化题目 |
-| ProblemGenerateTestsTool | 生成测试数据 |
-| ValidatorBuildTool | 构建校验器 |
-| ValidatorSelectTool | 选择最佳校验器 |
-| GeneratorBuildTool | 构建生成器 |
-| GeneratorRunTool | 运行生成器 |
-| CheckerBuildTool | 构建检查器 |
-| InteractorBuildTool | 构建交互器 |
+1. **Tool-Only, No LLM** — Server provides compilation, execution, and validation. All code generation is done by the client LLM.
 
-## 许可证
+2. **Stateless** — Each tool call is independent. State is managed via `problem_dir` parameter.
 
-MIT License
+3. **Unified Return Format** — All tools return `{success, error, data}` for consistent error handling.
+
+4. **Safe Execution** — Timeout control, memory limits (Linux via prlimit), and temporary directory isolation.
+
+### Generation Strategies
+
+| Strategy | Type Code | Purpose |
+|----------|-----------|---------|
+| `tiny` | 1 | Small exhaustive tests (N ≤ 10) |
+| `random` | 2 | Random data within constraints |
+| `extreme` | 3 | Edge cases: overflow, precision, hash collisions |
+| `tle` | 4 | TLE-inducing data for performance testing |
+
+### File Structure
+
+```
+problems/your-problem/
+├── sol.cpp          # Optimal solution
+├── brute.cpp        # Brute force (for validation)
+├── val.cpp          # Input validator
+├── gen.cpp          # Test generator
+├── chk.cpp          # Output checker (optional)
+├── interactor.cpp   # Interactor (for interactive problems)
+├── statements/
+│   └── README.md    # Problem statement
+├── tests/
+│   ├── input/
+│   └── output/
+└── config.json      # Problem configuration
+```
+
+## Development
+
+### Setup
+
+```bash
+git clone https://github.com/your-repo/autocode-mcp.git
+cd autocode-mcp
+uv sync
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest tests/ -v
+
+# Run with coverage
+uv run pytest tests/ --cov=src/autocode_mcp --cov-report=html
+
+# Run specific test file
+uv run pytest tests/test_compiler.py -v
+```
+
+### Code Quality
+
+```bash
+# Linting
+uv run ruff check .
+
+# Type checking
+uv run mypy src/
+
+# Format
+uv run ruff format .
+```
+
+### Project Structure
+
+```
+autocode-mcp/
+├── src/autocode_mcp/
+│   ├── tools/           # MCP tool implementations
+│   │   ├── base.py      # Tool base class
+│   │   ├── solution.py  # Solution tools
+│   │   ├── validator.py # Validator tools
+│   │   ├── generator.py # Generator tools
+│   │   ├── checker.py   # Checker tools
+│   │   ├── stress_test.py
+│   │   └── ...
+│   ├── utils/
+│   │   ├── compiler.py  # C++ compilation utilities
+│   │   └── platform.py  # Platform-specific helpers
+│   ├── prompts/         # Workflow prompt templates
+│   ├── resources/       # Template resources
+│   └── server.py        # MCP server entry point
+├── templates/           # C++ templates (testlib.h, etc.)
+├── tests/               # Test suite
+└── pyproject.toml
+```
+
+### Adding New Tools
+
+1. Create a new file in `src/autocode_mcp/tools/`
+2. Inherit from `Tool` base class
+3. Implement `name`, `description`, `input_schema`, and `execute()`
+4. Register in `server.py`
+5. Add tests in `tests/`
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Troubleshooting
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues and solutions.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- Based on the paper ["AutoCode: LLMs as Problem Setters for Competitive Programming"](https://arxiv.org/abs/...)
+- Uses [testlib.h](https://github.com/MikeMirzayanov/testlib) for competitive programming utilities
+- Built on the [Model Context Protocol](https://modelcontextprotocol.io/)
+
+## Links
+
+- [Documentation](https://github.com/your-repo/autocode-mcp#readme)
+- [PyPI](https://pypi.org/project/autocode-mcp/)
+- [GitHub](https://github.com/your-repo/autocode-mcp)
+- [Issue Tracker](https://github.com/your-repo/autocode-mcp/issues)
