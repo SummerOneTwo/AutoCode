@@ -5,7 +5,6 @@ Complexity 分析工具 - 分析解法复杂度。
 """
 
 import re
-from typing import Literal
 
 from .base import Tool, ToolResult
 
