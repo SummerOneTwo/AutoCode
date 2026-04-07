@@ -3,6 +3,7 @@ AutoCode MCP 工具模块。
 """
 from .base import Tool, ToolResult
 from .checker import CheckerBuildTool
+from .complexity import SolutionAnalyzeTool
 from .file_ops import FileReadTool, FileSaveTool
 from .generator import GeneratorBuildTool, GeneratorRunTool
 from .interactor import InteractorBuildTool
@@ -18,6 +19,7 @@ __all__ = [
     "FileSaveTool",
     "SolutionBuildTool",
     "SolutionRunTool",
+    "SolutionAnalyzeTool",
     "StressTestRunTool",
     "ProblemCreateTool",
     "ProblemGenerateTestsTool",

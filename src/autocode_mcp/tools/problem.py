@@ -202,6 +202,7 @@ class ProblemGenerateTestsTool(Tool):
         """执行测试数据生成。"""
         # 验证 constraints 参数
         if constraints:
+            # 验证 n_max 和 n_min
             n_max = constraints.get("n_max")
             if n_max is not None and n_max <= 0:
                 return ToolResult.fail("n_max must be positive")
@@ -210,6 +211,45 @@ class ProblemGenerateTestsTool(Tool):
                 return ToolResult.fail("n_min must be non-negative")
             if n_max is not None and n_min is not None and n_min > n_max:
                 return ToolResult.fail("n_min cannot be greater than n_max")
+
+            # 验证 t_max
+            t_max = constraints.get("t_max")
+            if t_max is not None and t_max <= 0:
+                return ToolResult.fail("t_max must be positive")
+
+            # 验证 sum_n_max
+            sum_n_max = constraints.get("sum_n_max")
+            if sum_n_max is not None and sum_n_max <= 0:
+                return ToolResult.fail("sum_n_max must be positive")
+
+            # 验证约束之间的关系
+            if n_max is not None and sum_n_max is not None and n_max > sum_n_max:
+                return ToolResult.fail("n_max cannot be greater than sum_n_max")
+            if t_max is not None and sum_n_max is not None and t_max > sum_n_max:
+                return ToolResult.fail("t_max cannot be greater than sum_n_max")
+
+        # 验证 test_configs 参数
+        if test_configs:
+            for i, config in enumerate(test_configs):
+                # 验证 type 字段
+                if "type" not in config:
+                    return ToolResult.fail(f"test_configs[{i}]: 'type' is required")
+                if config["type"] not in ("1", "2", "3", "4"):
+                    return ToolResult.fail(f"test_configs[{i}]: 'type' must be one of '1', '2', '3', '4'")
+
+                # 验证 n_min, n_max, t_min, t_max
+                for field in ["n_min", "n_max", "t_min", "t_max"]:
+                    if field not in config:
+                        return ToolResult.fail(f"test_configs[{i}]: '{field}' is required")
+                    val = config[field]
+                    if not isinstance(val, int) or val < 0:
+                        return ToolResult.fail(f"test_configs[{i}]: '{field}' must be a non-negative integer")
+
+                # 验证范围关系
+                if config["n_min"] > config["n_max"]:
+                    return ToolResult.fail(f"test_configs[{i}]: n_min cannot be greater than n_max")
+                if config["t_min"] > config["t_max"]:
+                    return ToolResult.fail(f"test_configs[{i}]: t_min cannot be greater than t_max")
 
         exe_ext = get_exe_extension()
 
@@ -238,6 +278,7 @@ class ProblemGenerateTestsTool(Tool):
         errors = []
 
         # 获取测试配置
+        test_configs_list: list[tuple[str, str, str, str, str, str]]
         if test_configs:
             test_configs_list = [
                 (
@@ -253,11 +294,11 @@ class ProblemGenerateTestsTool(Tool):
         else:
             test_configs_list = self._get_default_configs(constraints)
 
-        for i, config in enumerate(test_configs_list[:test_count], 1):
+        for i, test_cfg in enumerate(test_configs_list[:test_count], 1):
             test_file = os.path.join(tests_dir, f"{i:02d}.in")
             ans_file = os.path.join(tests_dir, f"{i:02d}.ans")
 
-            seed_offset, type_param, n_min, n_max, t_min, t_max = config
+            seed_offset, type_param, n_min, n_max, t_min, t_max = test_cfg
             cmd_args = [
                 str(i + int(seed_offset)),
                 type_param,

@@ -3,6 +3,7 @@ Solution 工具组 - 解法构建和运行。
 """
 
 import os
+from typing import Literal
 
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
@@ -62,7 +63,7 @@ class SolutionBuildTool(Tool, BuildToolMixin):
     async def execute(
         self,
         problem_dir: str,
-        solution_type: str,
+        solution_type: Literal["sol", "brute"],
         code: str,
         compiler: str = "g++",
     ) -> ToolResult:
@@ -155,7 +156,7 @@ class SolutionRunTool(Tool, RunToolMixin):
     async def execute(
         self,
         problem_dir: str,
-        solution_type: str,
+        solution_type: Literal["sol", "brute"],
         input_data: str,
         timeout: int = 30,
     ) -> ToolResult:

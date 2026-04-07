@@ -47,6 +47,9 @@ dmypy.json
 *.swp
 *.swo
 *~
+.claude/
+.codex/
+.opencode/
 
 # Project specific
 *.exe

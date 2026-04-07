@@ -6,7 +6,9 @@ Mixin 模块 - 提供代码复用的工具基类。
 
 from __future__ import annotations
 
-from ..utils.compiler import CompileResult, compile_cpp, run_binary
+from typing import Literal
+
+from ..utils.compiler import CompileResult, RunResult, compile_cpp, run_binary
 from ..utils.resource_limit import get_resource_limit
 
 
@@ -40,10 +42,10 @@ class RunToolMixin:
         binary_path: str,
         input_data: str,
         problem_dir: str,
-        solution_type: str,
+        solution_type: Literal["sol", "brute"],
         timeout: int | None = None,
         memory_mb: int | None = None,
-    ):
+    ) -> RunResult:
         limit = get_resource_limit(problem_dir, solution_type, timeout=timeout, memory_mb=memory_mb)
         return await run_binary(
             binary_path,

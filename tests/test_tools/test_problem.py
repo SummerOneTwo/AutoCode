@@ -172,6 +172,128 @@ int main() {
 
 
 @pytest.mark.asyncio
+async def test_problem_generate_tests_constraints_validation():
+    """测试 constraints 参数验证。"""
+    tool = ProblemGenerateTestsTool()
+
+    # 测试 t_max 必须为正整数
+    result = await tool.execute(
+        problem_dir="/dummy",
+        constraints={"t_max": 0},
+    )
+    assert not result.success
+    assert "t_max must be positive" in result.error
+
+    result = await tool.execute(
+        problem_dir="/dummy",
+        constraints={"t_max": -1},
+    )
+    assert not result.success
+    assert "t_max must be positive" in result.error
+
+    # 测试 sum_n_max 必须为正整数
+    result = await tool.execute(
+        problem_dir="/dummy",
+        constraints={"sum_n_max": 0},
+    )
+    assert not result.success
+    assert "sum_n_max must be positive" in result.error
+
+    result = await tool.execute(
+        problem_dir="/dummy",
+        constraints={"sum_n_max": -5},
+    )
+    assert not result.success
+    assert "sum_n_max must be positive" in result.error
+
+    # 测试 n_max 不能大于 sum_n_max
+    result = await tool.execute(
+        problem_dir="/dummy",
+        constraints={"n_max": 1000, "sum_n_max": 500},
+    )
+    assert not result.success
+    assert "n_max cannot be greater than sum_n_max" in result.error
+
+    # 测试 t_max 不能大于 sum_n_max
+    result = await tool.execute(
+        problem_dir="/dummy",
+        constraints={"t_max": 100, "sum_n_max": 50},
+    )
+    assert not result.success
+    assert "t_max cannot be greater than sum_n_max" in result.error
+
+    # 测试有效的 constraints 应该通过验证（会因缺少 generator 而失败，但不是验证失败）
+    result = await tool.execute(
+        problem_dir="/nonexistent",
+        constraints={"n_max": 1000, "t_max": 10, "sum_n_max": 10000},
+    )
+    assert not result.success
+    assert "Generator not found" in result.error  # 验证通过，但找不到 generator
+
+
+@pytest.mark.asyncio
+async def test_problem_generate_tests_test_configs_validation():
+    """测试 test_configs 参数验证。"""
+    tool = ProblemGenerateTestsTool()
+
+    # 测试缺少 type 字段
+    result = await tool.execute(
+        problem_dir="/dummy",
+        test_configs=[{"n_min": 1, "n_max": 10, "t_min": 1, "t_max": 5}],
+    )
+    assert not result.success
+    assert "test_configs[0]: 'type' is required" in result.error
+
+    # 测试 type 字段值无效
+    result = await tool.execute(
+        problem_dir="/dummy",
+        test_configs=[{"type": "5", "n_min": 1, "n_max": 10, "t_min": 1, "t_max": 5}],
+    )
+    assert not result.success
+    assert "test_configs[0]: 'type' must be one of '1', '2', '3', '4'" in result.error
+
+    # 测试缺少必需字段
+    result = await tool.execute(
+        problem_dir="/dummy",
+        test_configs=[{"type": "1", "n_min": 1, "n_max": 10, "t_min": 1}],  # 缺少 t_max
+    )
+    assert not result.success
+    assert "test_configs[0]: 't_max' is required" in result.error
+
+    # 测试字段值为负数
+    result = await tool.execute(
+        problem_dir="/dummy",
+        test_configs=[{"type": "1", "n_min": -1, "n_max": 10, "t_min": 1, "t_max": 5}],
+    )
+    assert not result.success
+    assert "test_configs[0]: 'n_min' must be a non-negative integer" in result.error
+
+    # 测试 n_min > n_max
+    result = await tool.execute(
+        problem_dir="/dummy",
+        test_configs=[{"type": "1", "n_min": 100, "n_max": 10, "t_min": 1, "t_max": 5}],
+    )
+    assert not result.success
+    assert "test_configs[0]: n_min cannot be greater than n_max" in result.error
+
+    # 测试 t_min > t_max
+    result = await tool.execute(
+        problem_dir="/dummy",
+        test_configs=[{"type": "1", "n_min": 1, "n_max": 10, "t_min": 10, "t_max": 5}],
+    )
+    assert not result.success
+    assert "test_configs[0]: t_min cannot be greater than t_max" in result.error
+
+    # 测试有效的 test_configs 应该通过验证（会因缺少 generator 而失败）
+    result = await tool.execute(
+        problem_dir="/nonexistent",
+        test_configs=[{"type": "1", "n_min": 1, "n_max": 10, "t_min": 1, "t_max": 5}],
+    )
+    assert not result.success
+    assert "Generator not found" in result.error  # 验证通过，但找不到 generator
+
+
+@pytest.mark.asyncio
 async def test_problem_pack_polygon_dynamic_test_count():
     """测试 Polygon 打包使用动态 test-count。"""
     create_tool = ProblemCreateTool()

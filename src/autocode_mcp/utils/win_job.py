@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 _IS_WINDOWS = sys.platform == "win32"
 
 if _IS_WINDOWS:
+    import pywintypes
     import win32api
     import win32con
     import win32job
@@ -127,7 +128,9 @@ class WinJobObject:
                 win32con.PROCESS_SET_QUOTA | win32con.PROCESS_TERMINATE, False, pid
             )
             win32job.AssignProcessToJobObject(self.job_handle, process_handle)
-        except Exception as e:
+        except pywintypes.error as e:
+            raise RuntimeError(f"Failed to assign process {pid} to job object: {e}") from e
+        except OSError as e:
             raise RuntimeError(f"Failed to assign process {pid} to job object: {e}") from e
 
     def terminate(self) -> None:

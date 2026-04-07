@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-08
+
+### Bug Fixes
+
+- **Server 模块**
+  - 修复 `SolutionAnalyzeTool` 导入路径错误（从 `complexity.py` 导入而非 `solution.py`）
+  - 更新 docstring 中的工具数量（14 → 15）
+  - 补充测试验证 `SolutionAnalyzeTool` 注册
+
+- **Utils 模块**
+  - 新增 macOS 资源限制实现（使用 `resource` 模块 + `preexec_fn`）
+  - 改进异常处理：将裸 `except Exception: pass` 改为捕获具体异常类型
+  - 添加日志记录（`logging` 模块），便于调试
+  - `win_job.py` 中捕获 `pywintypes.error` 而非通用 `Exception`
+
+- **Tools 模块**
+  - 完善 `constraints` 参数验证：新增 `t_max`、`sum_n_max` 验证
+  - 新增 `test_configs` 参数验证：验证 `type`、`n_min`、`n_max`、`t_min`、`t_max` 字段
+
+- **类型注解**
+  - `RunToolMixin.run()` 添加返回类型注解 `-> RunResult`
+  - `solution_type` 参数类型限制为 `Literal["sol", "brute"]`
+  - `solution.py` 中 `solution_type` 参数类型统一
+
+### Tests
+
+- 新增 `test_problem_generate_tests_test_configs_validation` 测试用例
+- 测试数量从 129 增至 131
+
 ## [0.3.0] - 2026-04-03
 
 ### Features

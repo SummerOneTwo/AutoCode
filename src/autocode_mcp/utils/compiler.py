@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import sys
@@ -23,6 +24,9 @@ from .platform import get_exe_extension
 
 if TYPE_CHECKING:
     from .win_job import WinJobObject
+
+# 模块级日志器
+_logger = logging.getLogger(__name__)
 
 _cache = CompileCache()
 
@@ -193,6 +197,32 @@ async def compile_cpp(
         )
 
 
+def _set_macos_resource_limit(memory_mb: int) -> None:
+    """macOS 上设置进程资源限制（通过 preexec_fn 调用）。
+
+    Args:
+        memory_mb: 内存限制（MB）
+
+    Note:
+        使用 preexec_fn 与 asyncio 存在潜在死锁风险（在极端情况下），
+        但实际触发概率极低。这是 macOS 上设置资源限制的标准方式。
+    """
+    import resource
+
+    memory_bytes = memory_mb * 1024 * 1024
+    # 设置虚拟内存限制 (address space)
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))  # type: ignore[attr-defined]
+    except (ValueError, OSError) as e:
+        _logger.debug("Failed to set RLIMIT_AS on macOS: %s", e)
+
+    # 设置数据段大小限制
+    try:
+        resource.setrlimit(resource.RLIMIT_DATA, (memory_bytes, memory_bytes))  # type: ignore[attr-defined]
+    except (ValueError, OSError) as e:
+        _logger.debug("Failed to set RLIMIT_DATA on macOS: %s", e)
+
+
 async def _force_terminate_process(
     process: asyncio.subprocess.Process,
     job: WinJobObject | None = None,
@@ -207,8 +237,8 @@ async def _force_terminate_process(
     if job:
         try:
             job.terminate()
-        except Exception:
-            pass
+        except OSError as e:
+            _logger.debug("Job object terminate failed: %s", e)
 
     # 再尝试正常终止
     try:
@@ -216,8 +246,8 @@ async def _force_terminate_process(
     except ProcessLookupError:
         # 进程已经不存在
         return
-    except Exception:
-        pass
+    except OSError as e:
+        _logger.debug("Failed to kill process: %s", e)
 
     # 等待进程退出，设置超时防止卡住
     try:
@@ -226,8 +256,10 @@ async def _force_terminate_process(
         # 如果 2 秒后进程仍未退出，再次尝试强制终止
         try:
             process.kill()
-        except Exception:
-            pass
+        except ProcessLookupError:
+            return
+        except OSError as e:
+            _logger.debug("Second kill attempt failed: %s", e)
 
 
 async def _run_process(
@@ -257,17 +289,21 @@ async def _run_process(
 
                     job = WinJobObject(memory_mb=memory_mb, timeout_sec=timeout)
                     job.assign_process(process.pid)
-                except Exception:
-                    # Job Object 创建失败，但仍需确保进程可控
+                except (OSError, RuntimeError) as e:
+                    # Job Object 创建/分配失败，记录日志并继续（进程仍可运行）
+                    _logger.warning("Failed to setup Windows Job Object: %s", e)
                     job = None
         elif sys.platform == "darwin":
+            # macOS: 使用 preexec_fn 设置资源限制
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                preexec_fn=lambda: _set_macos_resource_limit(memory_mb),
             )
         else:
+            # Linux: 使用 prlimit 设置资源限制
             memory_bytes = memory_mb * 1024 * 1024
             process = await asyncio.create_subprocess_exec(
                 "prlimit",
@@ -313,7 +349,7 @@ async def _run_process(
             error=f"Binary not found or prlimit unavailable: {cmd[0]}",
         )
     except Exception as e:
-        # 异常时确保进程被终止
+        # 最后防线：捕获所有异常确保进程被终止，防止资源泄漏
         if process:
             await _force_terminate_process(process, job)
         return RunResult(
