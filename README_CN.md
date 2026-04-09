@@ -99,7 +99,7 @@ uv run pytest tests/ -v
 
 ```bash
 claude plugin marketplace add ../autocode-marketplace
-claude plugin install autocode-mcp@autocode-marketplace
+claude plugin install autocode@autocode-marketplace
 ```
 
 注意：marketplace 默认从 `SummerOneTwo/AutoCode` 远程安装，所以测试远程安装前需要先把插件改动推到 GitHub。

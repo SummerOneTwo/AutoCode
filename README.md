@@ -99,7 +99,7 @@ Recommended:
 
 ```bash
 claude plugin marketplace add ../autocode-marketplace
-claude plugin install autocode-mcp@autocode-marketplace
+claude plugin install autocode@autocode-marketplace
 ```
 
 Note: marketplace installs pull from `SummerOneTwo/AutoCode`, so push plugin changes before testing remote installation.

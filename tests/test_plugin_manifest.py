@@ -10,7 +10,7 @@ def test_claude_plugin_manifest_links_mcp_config():
     """Claude Code plugin manifest should keep the canonical plugin name."""
     manifest = json.loads(Path(".claude-plugin/plugin.json").read_text(encoding="utf-8"))
 
-    assert manifest["name"] == "autocode-mcp"
+    assert manifest["name"] == "autocode"
     assert manifest["version"] == "0.4.1"
 
 
