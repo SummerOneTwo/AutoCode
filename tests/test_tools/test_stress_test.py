@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
         assert build_result.success
 
         exe_ext = get_exe_extension()
-        gen_exe = os.path.join(tmpdir, f"gen{exe_ext}")
+        gen_exe = os.path.join(tmpdir, "files", f"gen{exe_ext}")  # 新目录结构
         input_path = os.path.join(tmpdir, "input.txt")
 
         # 用不同 seed 生成输入

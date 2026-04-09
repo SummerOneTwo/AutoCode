@@ -452,18 +452,22 @@ problem_pack_polygon(
 
 ```
 problems/your-problem/
-├── sol.cpp          # Optimal solution
-├── brute.cpp        # Brute force (for validation)
-├── val.cpp          # Input validator
-├── gen.cpp          # Test generator
-├── chk.cpp          # Output checker (optional)
-├── interactor.cpp   # Interactor (for interactive problems)
+├── files/
+│   ├── testlib.h       # Competitive programming standard library
+│   ├── gen.cpp         # Test generator
+│   ├── val.cpp         # Input validator
+│   ├── checker.cpp     # Output checker (optional)
+│   └── interactor.cpp  # Interactor (for interactive problems)
+├── solutions/
+│   ├── sol.cpp         # Optimal solution
+│   └── brute.cpp       # Brute force (for validation)
 ├── statements/
-│   └── README.md    # Problem statement
+│   └── README.md       # Problem statement
 ├── tests/
-│   ├── input/
-│   └── output/
-└── config.json      # Problem configuration
+│   ├── 01.in           # Test input
+│   ├── 01.ans          # Expected output
+│   └── ...
+└── problem.xml         # Polygon configuration
 ```
 
 ## Development

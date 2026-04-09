@@ -84,8 +84,12 @@ class ValidatorBuildTool(Tool, BuildToolMixin):
         # 确保目录存在
         os.makedirs(problem_dir, exist_ok=True)
 
+        # 保存到 files/ 子目录
+        files_dir = os.path.join(problem_dir, "files")
+        os.makedirs(files_dir, exist_ok=True)
+
         # 保存代码
-        source_path = os.path.join(problem_dir, "val.cpp")
+        source_path = os.path.join(files_dir, "val.cpp")
         try:
             with open(source_path, "w", encoding="utf-8") as f:
                 f.write(code)
@@ -93,7 +97,7 @@ class ValidatorBuildTool(Tool, BuildToolMixin):
             return ToolResult.fail(f"Failed to save code: {str(e)}")
 
         # 编译
-        binary_path = os.path.join(problem_dir, f"val{get_exe_extension()}")
+        binary_path = os.path.join(files_dir, f"val{get_exe_extension()}")
 
         compile_result = await self.build(source_path, binary_path, compiler=compiler)
 

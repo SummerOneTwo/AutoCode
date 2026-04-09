@@ -62,6 +62,17 @@ class StressTestRunTool(Tool):
                     "description": "单次执行超时（秒）",
                     "default": 30,
                 },
+                "generator_args": {
+                    "type": "object",
+                    "description": "Generator 完整参数（如果 generator 支持多参数）",
+                    "properties": {
+                        "type": {"type": "string", "default": "2", "description": "生成策略类型"},
+                        "n_min": {"type": "integer", "default": 1, "description": "N 最小值"},
+                        "n_max": {"type": "integer", "description": "N 最大值"},
+                        "t_min": {"type": "integer", "default": 1, "description": "T 最小值"},
+                        "t_max": {"type": "integer", "default": 1, "description": "T 最大值"},
+                    },
+                },
             },
             "required": ["problem_dir"],
         }
@@ -72,14 +83,23 @@ class StressTestRunTool(Tool):
         trials: int = 1000,
         n_max: int = 100,
         timeout: int = 30,
+        generator_args: dict | None = None,
     ) -> ToolResult:
         """执行对拍测试。"""
         exe_ext = get_exe_extension()
 
-        # 检查必要文件
-        gen_exe = os.path.join(problem_dir, f"gen{exe_ext}")
-        sol_exe = os.path.join(problem_dir, f"sol{exe_ext}")
-        brute_exe = os.path.join(problem_dir, f"brute{exe_ext}")
+        # 检查必要文件 - 优先查找子目录，回退到根目录
+        gen_exe = os.path.join(problem_dir, "files", f"gen{exe_ext}")
+        if not os.path.exists(gen_exe):
+            gen_exe = os.path.join(problem_dir, f"gen{exe_ext}")
+
+        sol_exe = os.path.join(problem_dir, "solutions", f"sol{exe_ext}")
+        if not os.path.exists(sol_exe):
+            sol_exe = os.path.join(problem_dir, f"sol{exe_ext}")
+
+        brute_exe = os.path.join(problem_dir, "solutions", f"brute{exe_ext}")
+        if not os.path.exists(brute_exe):
+            brute_exe = os.path.join(problem_dir, f"brute{exe_ext}")
 
         if not os.path.exists(gen_exe):
             return ToolResult.fail("Generator not found. Run generator_build first.")
@@ -89,7 +109,9 @@ class StressTestRunTool(Tool):
             return ToolResult.fail("brute not found. Run solution_build first.")
 
         # 可选的 validator
-        val_exe = os.path.join(problem_dir, f"val{exe_ext}")
+        val_exe = os.path.join(problem_dir, "files", f"val{exe_ext}")
+        if not os.path.exists(val_exe):
+            val_exe = os.path.join(problem_dir, f"val{exe_ext}")
 
         failed_round = None
         last_input = None
@@ -103,7 +125,7 @@ class StressTestRunTool(Tool):
             for i in range(1, trials + 1):
                 # 1. 生成输入数据
                 gen_result = await self._generate_input(
-                    gen_exe, input_path, i, seed=i, timeout=timeout
+                    gen_exe, input_path, i, seed=i, timeout=timeout, generator_args=generator_args
                 )
                 if not gen_result["success"]:
                     return ToolResult.fail(
@@ -179,6 +201,7 @@ class StressTestRunTool(Tool):
         round_num: int,
         seed: int,
         timeout: int,
+        generator_args: dict | None = None,
     ) -> dict:
         """
         生成输入数据。
@@ -189,14 +212,30 @@ class StressTestRunTool(Tool):
             round_num: 当前轮次
             seed: 随机种子
             timeout: 超时时间（秒）
+            generator_args: Generator 完整参数（可选）
 
         Returns:
             dict: {"success": bool, "error": str | None}
         """
         try:
+            # 构建命令参数
+            if generator_args:
+                # 完整协议: gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max>
+                cmd_args = [
+                    str(seed),
+                    generator_args.get("type", "2"),
+                    str(generator_args.get("n_min", 1)),
+                    str(generator_args.get("n_max", 100)),
+                    str(generator_args.get("t_min", 1)),
+                    str(generator_args.get("t_max", 1)),
+                ]
+            else:
+                # 简单协议: gen.exe <seed>
+                cmd_args = [str(seed)]
+
             gen_result = await run_binary_with_args(
                 gen_exe,
-                [str(seed)],
+                cmd_args,
                 timeout=timeout,
             )
             # Generator 可能因 testlib.h 优化问题崩溃，但输出仍有效

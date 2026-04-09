@@ -67,7 +67,11 @@ class GeneratorBuildTool(Tool, BuildToolMixin):
         """执行 Generator 构建。"""
         os.makedirs(problem_dir, exist_ok=True)
 
-        source_path = os.path.join(problem_dir, "gen.cpp")
+        # 保存到 files/ 子目录
+        files_dir = os.path.join(problem_dir, "files")
+        os.makedirs(files_dir, exist_ok=True)
+
+        source_path = os.path.join(files_dir, "gen.cpp")
         try:
             with open(source_path, "w", encoding="utf-8") as f:
                 f.write(code)
@@ -75,7 +79,7 @@ class GeneratorBuildTool(Tool, BuildToolMixin):
             return ToolResult.fail(f"Failed to save code: {str(e)}")
 
         exe_ext = get_exe_extension()
-        binary_path = os.path.join(problem_dir, f"gen{exe_ext}")
+        binary_path = os.path.join(files_dir, f"gen{exe_ext}")
 
         compile_result = await self.build(source_path, binary_path, compiler=compiler)
 
@@ -192,8 +196,11 @@ class GeneratorRunTool(Tool):
         """执行数据生成。"""
         exe_ext = get_exe_extension()
 
-        # 检查 generator
-        gen_exe = os.path.join(problem_dir, f"gen{exe_ext}")
+        # 检查 generator - 优先查找 files/ 子目录
+        gen_exe = os.path.join(problem_dir, "files", f"gen{exe_ext}")
+        if not os.path.exists(gen_exe):
+            gen_exe = os.path.join(problem_dir, f"gen{exe_ext}")
+
         if not os.path.exists(gen_exe):
             return ToolResult.fail("Generator not found. Run generator_build first.")
 

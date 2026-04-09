@@ -71,9 +71,13 @@ class SolutionBuildTool(Tool, BuildToolMixin):
         # 确保目录存在
         os.makedirs(problem_dir, exist_ok=True)
 
+        # 保存到 solutions/ 子目录
+        solutions_dir = os.path.join(problem_dir, "solutions")
+        os.makedirs(solutions_dir, exist_ok=True)
+
         # 确定文件名
         source_name = f"{solution_type}.cpp"
-        source_path = os.path.join(problem_dir, source_name)
+        source_path = os.path.join(solutions_dir, source_name)
 
         # 保存代码
         try:
@@ -85,7 +89,7 @@ class SolutionBuildTool(Tool, BuildToolMixin):
         # 编译
         exe_ext = get_exe_extension()
         binary_name = f"{solution_type}{exe_ext}"
-        binary_path = os.path.join(problem_dir, binary_name)
+        binary_path = os.path.join(solutions_dir, binary_name)
 
         result = await self.build(source_path, binary_path, compiler=compiler)
 
@@ -161,9 +165,13 @@ class SolutionRunTool(Tool, RunToolMixin):
         timeout: int = 30,
     ) -> ToolResult:
         """执行解法运行。"""
-        # 确定二进制文件路径
+        # 确定二进制文件路径 - 优先查找 solutions/ 子目录
         exe_ext = get_exe_extension()
-        binary_path = os.path.join(problem_dir, f"{solution_type}{exe_ext}")
+        binary_path = os.path.join(problem_dir, "solutions", f"{solution_type}{exe_ext}")
+
+        # 如果子目录没有，检查根目录（向后兼容）
+        if not os.path.exists(binary_path):
+            binary_path = os.path.join(problem_dir, f"{solution_type}{exe_ext}")
 
         if not os.path.exists(binary_path):
             return ToolResult.fail(

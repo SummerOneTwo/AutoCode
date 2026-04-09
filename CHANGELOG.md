@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-09
+
+### Breaking Changes
+
+- **配置单位变更**
+  - `problem_pack_polygon` 的 `time_limit` 参数单位从毫秒改为**秒**
+  - `problem_pack_polygon` 的 `memory_limit` 参数单位从字节改为**MB**
+  - 与 `problem.yaml` 和 `ResourceLimit` 保持一致
+
+- **目录结构变更**
+  - `solution_build` 保存文件到 `solutions/` 子目录
+  - `generator_build` 保存文件到 `files/` 子目录
+  - `validator_build` 保存文件到 `files/` 子目录
+  - `checker_build` 保存文件到 `files/` 子目录
+  - `interactor_build` 保存文件到 `files/` 子目录
+  - 所有工具支持向后兼容：优先查找子目录，回退到根目录
+
+### Bug Fixes
+
+- **打包配置修复 (P0)**
+  - 将 `templates/` 移入 `src/autocode_mcp/templates/`
+  - 修复 wheel 包不包含模板文件的问题
+  - 更新 `TEMPLATES_DIR` 路径计算逻辑
+
+- **MCP 协议修复 (P0)**
+  - `call_tool` 返回类型从 `list[TextContent]` 改为 `CallToolResult`
+  - 正确设置 `isError` 标记，客户端可区分成功/失败
+  - 添加 `structuredContent` 字段提供结构化数据
+  - `get_prompt` 返回类型从 `str` 改为 `GetPromptResult`
+  - `read_resource` 返回类型从 `str` 改为 `ReadResourceResult`
+
+- **Generator 协议统一 (P1)**
+  - `stress_test_run` 新增 `generator_args` 参数
+  - 支持完整协议: `gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max>`
+  - 默认保持简单协议: `gen.exe <seed>`
+
+- **Verdict 完善 (P1)**
+  - `checker_build` 根据 testlib.h 返回码正确区分 AC/WA/PE/TLE
+  - `interactor_build` 支持 PE 判断
+
+### Tests
+
+- 新增 `tests/test_packaging.py` 验收测试 (7 个测试用例)
+- 测试数量从 131 增至 138
+
+### Documentation
+
+- 更新 README 文件结构说明，反映新的目录布局
+
 ## [0.3.1] - 2026-04-08
 
 ### Bug Fixes

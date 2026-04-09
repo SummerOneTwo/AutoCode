@@ -457,13 +457,13 @@ class ProblemPackPolygonTool(Tool):
                 },
                 "time_limit": {
                     "type": "integer",
-                    "description": "时间限制（毫秒）",
-                    "default": 1000,
+                    "description": "时间限制（秒）",
+                    "default": 1,
                 },
                 "memory_limit": {
                     "type": "integer",
-                    "description": "内存限制（字节）",
-                    "default": 268435456,
+                    "description": "内存限制（MB）",
+                    "default": 256,
                 },
             },
             "required": ["problem_dir"],
@@ -472,12 +472,16 @@ class ProblemPackPolygonTool(Tool):
     async def execute(
         self,
         problem_dir: str,
-        time_limit: int = 1000,
-        memory_limit: int = 268435456,
+        time_limit: int = 1,
+        memory_limit: int = 256,
     ) -> ToolResult:
         """执行 Polygon 打包。"""
         if not os.path.exists(problem_dir):
             return ToolResult.fail(f"Problem directory not found: {problem_dir}")
+
+        # 转换单位：秒 -> 毫秒，MB -> 字节
+        time_limit_ms = time_limit * 1000
+        memory_limit_bytes = memory_limit * 1024 * 1024
 
         results = {
             "files_copied": [],
@@ -541,8 +545,8 @@ class ProblemPackPolygonTool(Tool):
     </statements>
     <judging>
         <testset name="tests">
-            <time-limit>{time_limit}</time-limit>
-            <memory-limit>{memory_limit}</memory-limit>
+            <time-limit>{time_limit_ms}</time-limit>
+            <memory-limit>{memory_limit_bytes}</memory-limit>
             <test-count>{actual_test_count}</test-count>
             <input-path-pattern>tests/%02d.in</input-path-pattern>
             <answer-path-pattern>tests/%02d.ans</answer-path-pattern>

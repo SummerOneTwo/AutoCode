@@ -95,8 +95,8 @@ async def test_problem_pack_polygon_creates_xml():
 
         result = await tool.execute(
             problem_dir=problem_dir,
-            time_limit=2000,
-            memory_limit=536870912,
+            time_limit=2,  # 秒
+            memory_limit=512,  # MB
         )
 
         assert result.success
@@ -106,8 +106,8 @@ async def test_problem_pack_polygon_creates_xml():
 
         with open(xml_path) as f:
             content = f.read()
-            assert "2000" in content  # time_limit
-            assert "536870912" in content  # memory_limit
+            assert "2000" in content  # time_limit_ms (2秒 * 1000)
+            assert "536870912" in content  # memory_limit_bytes (512MB * 1024 * 1024)
 
 
 @pytest.mark.asyncio

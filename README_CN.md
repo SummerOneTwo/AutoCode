@@ -452,18 +452,22 @@ problem_pack_polygon(
 
 ```
 problems/your-problem/
-├── sol.cpp          # 最优解
-├── brute.cpp        # 暴力解（用于验证）
-├── val.cpp          # 输入校验器
-├── gen.cpp          # 测试生成器
-├── chk.cpp          # 输出检查器（可选）
-├── interactor.cpp   # 交互器（交互题）
+├── files/
+│   ├── testlib.h       # 竞赛编程标准库
+│   ├── gen.cpp         # 测试生成器
+│   ├── val.cpp         # 输入校验器
+│   ├── checker.cpp     # 输出检查器（可选）
+│   └── interactor.cpp  # 交互器（交互题）
+├── solutions/
+│   ├── sol.cpp         # 最优解
+│   └── brute.cpp       # 暴力解（用于验证）
 ├── statements/
-│   └── README.md    # 题目描述
+│   └── README.md       # 题目描述
 ├── tests/
-│   ├── input/
-│   └── output/
-└── config.json      # 题目配置
+│   ├── 01.in           # 测试输入
+│   ├── 01.ans          # 期望输出
+│   └── ...
+└── problem.xml         # Polygon 配置
 ```
 
 ## 开发

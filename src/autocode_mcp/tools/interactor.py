@@ -77,8 +77,12 @@ class InteractorBuildTool(Tool):
         """执行 Interactor 构建。"""
         os.makedirs(problem_dir, exist_ok=True)
 
+        # 保存到 files/ 子目录
+        files_dir = os.path.join(problem_dir, "files")
+        os.makedirs(files_dir, exist_ok=True)
+
         # 保存代码
-        source_path = os.path.join(problem_dir, "interactor.cpp")
+        source_path = os.path.join(files_dir, "interactor.cpp")
         try:
             with open(source_path, "w", encoding="utf-8") as f:
                 f.write(code)
@@ -86,7 +90,7 @@ class InteractorBuildTool(Tool):
             return ToolResult.fail(f"Failed to save code: {str(e)}")
 
         # 编译
-        binary_path = os.path.join(problem_dir, f"interactor{get_exe_extension()}")
+        binary_path = os.path.join(files_dir, f"interactor{get_exe_extension()}")
 
         compile_result = await compile_cpp(source_path, binary_path, compiler=compiler)
 
@@ -308,10 +312,11 @@ class InteractorBuildTool(Tool):
                     pass
 
         # 根据交互器退出码判断结果
-        if interactor.returncode == 0:
-            return {"verdict": "AC", "reason": "Accepted"}
-        elif interactor.returncode == 1:
-            return {"verdict": "WA", "reason": "Wrong answer"}
+        # Interactor 返回码约定 (testlib.h):
+        # 0 = AC, 1 = WA, 2 = PE, 3+ = Fail
+        verdict_map = {0: "AC", 1: "WA", 2: "PE"}
+        if interactor.returncode in verdict_map:
+            return {"verdict": verdict_map[interactor.returncode], "reason": "..."}
         else:
             return {
                 "verdict": "RE",
