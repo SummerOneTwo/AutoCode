@@ -26,8 +26,8 @@ class ValidatorBuildTool(Tool, BuildToolMixin):
         return """构建并验证数据校验器。
 
         基于论文 Algorithm 1 实现:
-        1. 保存代码到 problem_dir/val.cpp
-        2. 编译生成 val.exe
+        1. 保存代码到 problem_dir/files/val.cpp
+        2. 编译生成 files/val.exe
         3. 运行测试用例验证健壮性
         4. 返回得分和详细结果
 

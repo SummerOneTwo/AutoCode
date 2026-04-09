@@ -26,8 +26,8 @@ class InteractorBuildTool(Tool):
         return """构建并验证交互器。
 
         基于论文 Algorithm 4 实现:
-        1. 保存代码到 problem_dir/interactor.cpp
-        2. 编译生成 interactor.exe
+        1. 保存代码到 problem_dir/files/interactor.cpp
+        2. 编译生成 files/interactor.exe
         3. 运行变异测试验证区分能力
         4. 返回 pass_rate 和 fail_rate
 
@@ -101,12 +101,18 @@ class InteractorBuildTool(Tool):
                 compile_log=compile_result.stderr,
             )
 
-        # 如果没有提供参考解和变异解，直接返回成功
+        # 如果没有提供参考解和变异解，直接返回成功（但 pass_rate 为 0）
         if not reference_solution_path and not mutant_solutions:
             return ToolResult.ok(
                 source_path=source_path,
                 binary_path=binary_path,
                 compile_log=compile_result.stderr,
+                pass_rate=0.0,
+                fail_rate=0.0,
+                pass_count=0,
+                pass_total=0,
+                fail_count=0,
+                fail_total=0,
                 message="Interactor built successfully (no validation performed)",
             )
 
@@ -114,7 +120,14 @@ class InteractorBuildTool(Tool):
         pass_count = 0
         pass_total = 0
 
-        if reference_solution_path and os.path.exists(reference_solution_path):
+        if reference_solution_path:
+            # 检查参考解是否存在，不存在则报错而非静默跳过
+            if not os.path.exists(reference_solution_path):
+                return ToolResult.fail(
+                    f"Reference solution not found: {reference_solution_path}",
+                    source_path=source_path,
+                    binary_path=binary_path,
+                )
             pass_total = 1
             # 运行交互测试：参考解应该被接受
             test_result = await self._run_interactor_test(
@@ -138,7 +151,8 @@ class InteractorBuildTool(Tool):
                     if test_result.get("verdict") != "AC":
                         fail_count += 1
 
-        pass_rate = pass_count / pass_total if pass_total > 0 else 1.0
+        # 计算通过率 - 没有测试时为 0，不是 1.0
+        pass_rate = pass_count / pass_total if pass_total > 0 else 0.0
         fail_rate = fail_count / fail_total if fail_total > 0 else 0.0
 
         return ToolResult.ok(
@@ -209,8 +223,15 @@ class InteractorBuildTool(Tool):
                     return_when=asyncio.FIRST_COMPLETED,
                 )
 
-                # 检查是否超时
-                timed_out = any(task.get_name() == "sleep" for task in done)
+                # 检查是否超时 - asyncio.wait 返回 set，需要遍历
+                timed_out = False
+                comm_task = None
+                for task in done:
+                    if task.get_name() == "sleep":
+                        timed_out = True
+                    else:
+                        comm_task = task
+
                 if timed_out:
                     interactor.kill()
                     solution.kill()
@@ -219,7 +240,6 @@ class InteractorBuildTool(Tool):
                     return {"verdict": "TLE", "reason": "Timeout"}
 
                 # 获取通信结果
-                comm_task = done[0] if done else None
                 if comm_task and not comm_task.cancelled():
                     result = comm_task.result()
                     return result
@@ -282,9 +302,9 @@ class InteractorBuildTool(Tool):
                 ),
             ]
 
-            # 等待任一进程完成
+            # 等待任一进程完成 - 使用 create_task 避免弃用警告
             await asyncio.wait(
-                [interactor.wait(), solution.wait()],
+                [asyncio.create_task(interactor.wait()), asyncio.create_task(solution.wait())],
                 return_when=asyncio.FIRST_COMPLETED,
             )
         except NotImplementedError:

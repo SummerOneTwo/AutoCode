@@ -125,7 +125,7 @@ class StressTestRunTool(Tool):
             for i in range(1, trials + 1):
                 # 1. 生成输入数据
                 gen_result = await self._generate_input(
-                    gen_exe, input_path, i, seed=i, timeout=timeout, generator_args=generator_args
+                    gen_exe, input_path, i, seed=i, timeout=timeout, n_max=n_max, generator_args=generator_args
                 )
                 if not gen_result["success"]:
                     return ToolResult.fail(
@@ -201,6 +201,7 @@ class StressTestRunTool(Tool):
         round_num: int,
         seed: int,
         timeout: int,
+        n_max: int = 100,
         generator_args: dict | None = None,
     ) -> dict:
         """
@@ -212,6 +213,7 @@ class StressTestRunTool(Tool):
             round_num: 当前轮次
             seed: 随机种子
             timeout: 超时时间（秒）
+            n_max: N 最大值（用于默认协议）
             generator_args: Generator 完整参数（可选）
 
         Returns:
@@ -225,13 +227,20 @@ class StressTestRunTool(Tool):
                     str(seed),
                     generator_args.get("type", "2"),
                     str(generator_args.get("n_min", 1)),
-                    str(generator_args.get("n_max", 100)),
+                    str(generator_args.get("n_max", n_max)),
                     str(generator_args.get("t_min", 1)),
                     str(generator_args.get("t_max", 1)),
                 ]
             else:
-                # 简单协议: gen.exe <seed>
-                cmd_args = [str(seed)]
+                # 默认使用完整协议，与 generator_run 和 problem_generate_tests 保持一致
+                cmd_args = [
+                    str(seed),
+                    "2",           # type=random
+                    "1",           # n_min
+                    str(n_max),    # n_max 使用参数
+                    "1",           # t_min
+                    "1",           # t_max
+                ]
 
             gen_result = await run_binary_with_args(
                 gen_exe,

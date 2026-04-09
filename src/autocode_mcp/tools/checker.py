@@ -26,8 +26,8 @@ class CheckerBuildTool(Tool, BuildToolMixin):
         return """构建并验证输出检查器。
 
         基于论文 Algorithm 3 实现:
-        1. 保存代码到 problem_dir/checker.cpp
-        2. 编译生成 checker.exe
+        1. 保存代码到 problem_dir/files/checker.cpp
+        2. 编译生成 files/checker.exe
         3. 运行测试场景验证准确性
         4. 返回准确率和详细结果
 
@@ -59,7 +59,7 @@ class CheckerBuildTool(Tool, BuildToolMixin):
                             "reference_output": {"type": "string"},
                             "expected_verdict": {
                                 "type": "string",
-                                "enum": ["AC", "WA", "PE"],
+                                "enum": ["AC", "WA", "PE", "FAIL"],
                             },
                         },
                         "required": ["input", "contestant_output", "reference_output"],
@@ -155,7 +155,13 @@ class CheckerBuildTool(Tool, BuildToolMixin):
                 # Checker 返回码约定 (testlib.h):
                 # 0 = AC, 1 = WA, 2 = PE, 3+ = Fail (checker error)
                 verdict_map = {0: "AC", 1: "WA", 2: "PE"}
-                actual_verdict = verdict_map.get(run_result.return_code, "WA")
+                if run_result.return_code in verdict_map:
+                    actual_verdict = verdict_map[run_result.return_code]
+                elif run_result.return_code >= 3:
+                    # Checker 自身失败，返回 FAIL 而非 WA
+                    actual_verdict = "FAIL"
+                else:
+                    actual_verdict = "WA"
 
                 # 检查是否超时
                 if run_result.timed_out:

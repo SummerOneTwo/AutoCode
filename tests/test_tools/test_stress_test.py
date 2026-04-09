@@ -217,7 +217,7 @@ int main(int argc, char* argv[]) {
         inputs = []
         for seed in [1, 2, 3, 4, 5]:
             result = await tool._generate_input(
-                gen_exe, input_path, round_num=seed, seed=seed, timeout=5
+                gen_exe, input_path, round_num=seed, seed=seed, timeout=5, n_max=100
             )
             assert result["success"], f"Generator failed with seed {seed}"
             with open(input_path, encoding="utf-8") as f:

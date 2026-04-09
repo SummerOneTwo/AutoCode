@@ -73,7 +73,7 @@ async def test_mcp_get_prompt_result_type():
     from autocode_mcp.server import get_prompt
 
     # 测试存在的 prompt
-    result = await get_prompt("validator_workflow")
+    result = await get_prompt("validator")
     assert isinstance(result, GetPromptResult)
     assert len(result.messages) > 0
 
@@ -117,3 +117,100 @@ def test_all_template_files_exist():
     for template in expected_templates:
         path = os.path.join(TEMPLATES_DIR, template)
         assert os.path.exists(path), f"Template not found: {template}"
+
+
+@pytest.mark.asyncio
+async def test_interactor_reference_solution_not_found():
+    """测试 interactor_build 在参考解不存在时报错而非静默跳过。"""
+    from autocode_mcp.server import call_tool, register_all_tools
+
+    register_all_tools()
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 测试不存在的参考解路径
+        result = await call_tool("interactor_build", {
+            "problem_dir": tmpdir,
+            "code": '#include "testlib.h"\nint main() { return 0; }',
+            "reference_solution_path": os.path.join(tmpdir, "nonexistent.exe"),
+        })
+
+        assert result.isError is True
+        assert "Reference solution not found" in result.structuredContent.get("error", "")
+
+
+@pytest.mark.asyncio
+async def test_interactor_pass_rate_without_tests():
+    """测试 interactor_build 没有测试时 pass_rate 为 0 而非 1.0。"""
+    from autocode_mcp.server import call_tool, register_all_tools
+
+    register_all_tools()
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 不提供参考解和变异解
+        result = await call_tool("interactor_build", {
+            "problem_dir": tmpdir,
+            "code": '#include "testlib.h"\nint main() { return 0; }',
+        })
+
+        assert result.isError is False
+        # pass_rate 在 data 字段中
+        data = result.structuredContent.get("data", {})
+        assert data.get("pass_rate", 1.0) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_checker_fail_verdict():
+    """测试 checker_build 能区分 FAIL 和 WA。"""
+    from autocode_mcp.server import call_tool, register_all_tools
+
+    register_all_tools()
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 创建一个会返回非标准退出码的 checker
+        # testlib.h 的 quitf(_fail, ...) 会返回退出码 3+
+        checker_code = '''
+#include "testlib.h"
+int main(int argc, char* argv[]) {
+    registerTestlibCmd(argc, argv);
+    // 强制返回 FAIL
+    quitf(_fail, "Checker internal error");
+    return 3;
+}
+'''
+        result = await call_tool("checker_build", {
+            "problem_dir": tmpdir,
+            "code": checker_code,
+            "test_scenarios": [
+                {
+                    "input": "1",
+                    "contestant_output": "1",
+                    "reference_output": "1",
+                    "expected_verdict": "FAIL",
+                },
+            ],
+        })
+
+        assert result.isError is False
+        test_results = result.structuredContent.get("test_results", [])
+        if test_results:
+            # 应该识别为 FAIL 而非 WA
+            assert test_results[0].get("actual_verdict") == "FAIL"
+
+
+def test_all_prompts_exist():
+    """测试所有声明的 prompt 都存在。"""
+    from autocode_mcp.prompts import get_prompt, list_prompts
+
+    prompts = list_prompts()
+    assert len(prompts) == 6
+
+    for name in prompts:
+        content = get_prompt(name)
+        assert content, f"Prompt '{name}' is empty"
+        assert len(content) > 100, f"Prompt '{name}' seems too short"

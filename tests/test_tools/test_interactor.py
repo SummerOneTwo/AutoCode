@@ -123,12 +123,9 @@ async def test_interactor_with_reference_solution():
         build_result = await tool.execute(problem_dir=tmpdir, code=INTERACTOR_CODE)
         assert build_result.success
 
-        # 构建正确的参考解法
-        sol_path = os.path.join(tmpdir, "correct_sol.cpp")
-        with open(sol_path, "w", encoding="utf-8") as f:
-            f.write(SIMPLE_SOLUTION)
+        # 构建正确的参考解法 - solution_build 保存到 solutions/sol.exe
         await sol_tool.execute(problem_dir=tmpdir, solution_type="sol", code=SIMPLE_SOLUTION)
-        correct_sol_exe = os.path.join(tmpdir, "sol.exe")
+        correct_sol_exe = os.path.join(tmpdir, "solutions", "sol.exe")
 
         # 验证正确解法
         result = await tool.execute(

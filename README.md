@@ -7,14 +7,14 @@
 
 **An MCP Server for competitive programming problem creation, implementing the Validator-Generator-Checker framework from the AutoCode paper.**
 
-AutoCode MCP Server provides 14 atomic tools that enable AI assistants to create, validate, and test competitive programming problems. It handles compilation, execution, stress testing, and test data generation—letting the AI focus on problem design and solution logic.
+AutoCode MCP Server provides 15 atomic tools that enable AI assistants to create, validate, and test competitive programming problems. It handles compilation, execution, stress testing, and test data generation—letting the AI focus on problem design and solution logic.
 
 [中文文档](README_CN.md)
 
 ## Features
 
 - **Validator-Generator-Checker Framework** — Automated validation of input correctness, multi-strategy test generation, and output verification based on the AutoCode paper
-- **14 Atomic Tools** — File operations, solution building, stress testing, validator/generator/checker construction, and more
+- **15 Atomic Tools** — File operations, solution building, stress testing, validator/generator/checker construction, and more
 - **testlib.h Support** — Full integration with the competitive programming standard library for validators, generators, and checkers
 - **Multi-Strategy Generation** — Four generation strategies: tiny (exhaustive), random, extreme (edge cases), and TLE-inducing
 - **Stress Testing** — Automated comparison between optimal and brute-force solutions with configurable trial counts
@@ -189,11 +189,11 @@ For development or custom installations:
 
 ### Verify Installation
 
-After configuration, restart your MCP client and check that tools are available. You should see 14 tools prefixed with `autocode_`.
+After configuration, restart your MCP client and check that tools are available. You should see 15 tools available.
 
 ## Tools Reference
 
-AutoCode provides 14 atomic tools organized into 7 groups. All tools return a unified format:
+AutoCode provides 15 atomic tools organized into 7 groups. All tools return a unified format:
 
 ```json
 {
@@ -241,7 +241,7 @@ AutoCode provides 14 atomic tools organized into 7 groups. All tools return a un
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `interactor_build` | Build interactor for interactive problems | `problem_dir`, `code`, `test_scenarios` |
+| `interactor_build` | Build interactor for interactive problems | `problem_dir`, `code`, `reference_solution_path`, `mutant_solutions` |
 
 ### Stress Testing
 
@@ -253,9 +253,9 @@ AutoCode provides 14 atomic tools organized into 7 groups. All tools return a un
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `problem_create` | Initialize problem directory | `problem_dir`, `title`, `time_limit`, `memory_limit` |
+| `problem_create` | Initialize problem directory | `problem_dir`, `problem_name` |
 | `problem_generate_tests` | Generate final test data | `problem_dir`, `test_count` |
-| `problem_pack_polygon` | Package for Polygon platform | `problem_dir`, `output_dir` |
+| `problem_pack_polygon` | Package for Polygon platform | `problem_dir`, `time_limit`, `memory_limit` |
 
 ## Workflow Tutorial: A+B Problem
 
@@ -266,9 +266,7 @@ This tutorial walks through creating a simple A+B problem using AutoCode tools.
 ```python
 problem_create(
     problem_dir="problems/ab",
-    title="A + B",
-    time_limit=1000,
-    memory_limit=256
+    problem_name="A + B"
 )
 ```
 
@@ -393,7 +391,8 @@ problem_generate_tests(
 ```python
 problem_pack_polygon(
     problem_dir="problems/ab",
-    output_dir="polygon/ab"
+    time_limit=1,
+    memory_limit=256
 )
 ```
 
