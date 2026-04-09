@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 STATE_DIR_NAME = ".autocode-workflow"
 STATE_FILE_NAME = "state.json"
 

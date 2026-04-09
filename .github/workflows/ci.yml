@@ -92,7 +92,7 @@ jobs:
       - name: Run packaging smoke tests
         run: |
           source /tmp/test-venv/bin/activate
-          pytest tests/test_packaging_smoke.py -v -m "packaging"
+          pytest tests/test_e2e_mcp.py -v -m "packaging"
       - name: Verify console script
         run: |
           source /tmp/test-venv/bin/activate
