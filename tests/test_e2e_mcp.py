@@ -1,11 +1,13 @@
-"""真实 MCP 端到端兼容性测试。
+"""MCP 端到端兼容性测试。
 
 通过 stdio 启动 MCP Server 进程，进行完整的协议握手和工具调用验证。
+包含开发模式（python -m）和打包模式（console script）两种测试。
 """
 
 import asyncio
 import json
 import os
+import shutil
 import sys
 import tempfile
 
@@ -29,12 +31,10 @@ class MCPClient:
             "params": params or {},
         }
 
-        # 发送请求
         message = json.dumps(request) + "\n"
         self.process.stdin.write(message.encode())
         await self.process.stdin.drain()
 
-        # 读取响应
         response_line = await self.process.stdout.readline()
         if not response_line:
             raise RuntimeError("MCP server closed connection")
@@ -48,7 +48,6 @@ class MCPClient:
 
     async def initialize(self) -> dict:
         """执行 MCP 初始化握手。"""
-        # 发送 initialize 请求
         result = await self.send_request(
             "initialize",
             {
@@ -58,7 +57,6 @@ class MCPClient:
             },
         )
 
-        # 发送 initialized 通知
         notification = {"jsonrpc": "2.0", "method": "notifications/initialized"}
         message = json.dumps(notification) + "\n"
         self.process.stdin.write(message.encode())
@@ -87,10 +85,12 @@ class MCPClient:
         await self.process.communicate()
 
 
+# ============== 开发模式测试（python -m） ==============
+
+
 @pytest.fixture
 async def mcp_client():
-    """启动 MCP Server 并返回客户端实例。"""
-    # 使用 uv run 启动 autocode-mcp
+    """启动 MCP Server 并返回客户端实例（开发模式）。"""
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
@@ -126,10 +126,8 @@ async def test_mcp_list_tools(mcp_client: MCPClient):
 
     tools = await mcp_client.list_tools()
 
-    # 验证有 15 个工具
     assert len(tools) == 15
 
-    # 验证关键工具存在
     tool_names = {t["name"] for t in tools}
     expected_tools = {
         "file_read",
@@ -158,24 +156,20 @@ async def test_mcp_call_file_read(mcp_client: MCPClient):
     try:
         result = await mcp_client.call_tool("file_read", {"path": temp_path})
 
-        # 验证返回结构
         assert "content" in result
         assert not result.get("isError", True)
 
-        # 验证 content 是列表且包含 TextContent
         content = result["content"]
         assert isinstance(content, list)
         assert len(content) == 1
         assert content[0]["type"] == "text"
 
-        # 验证文本内容是有效 JSON
         text = content[0]["text"]
         parsed = json.loads(text)
         assert parsed["success"] is True
         assert "data" in parsed
         assert parsed["data"]["content"] == "hello world"
 
-        # 验证 structuredContent 存在
         assert "structuredContent" in result
         assert result["structuredContent"]["success"] is True
     finally:
@@ -207,12 +201,9 @@ async def test_mcp_text_content_is_valid_json(mcp_client: MCPClient):
 
         text = result["content"][0]["text"]
 
-        # 必须是有效 JSON
         parsed = json.loads(text)
 
-        # 不能是 Python repr 格式（如 {'success': True}）
-        # Python repr 使用单引号，JSON 使用双引号
-        assert "'" not in text  # JSON 不使用单引号
+        assert "'" not in text
         assert parsed["success"] is True
     finally:
         os.unlink(temp_path)
@@ -234,9 +225,86 @@ async def test_mcp_chinese_text_encoding(mcp_client: MCPClient):
         text = result["content"][0]["text"]
         parsed = json.loads(text)
 
-        # 验证中文正确编码（ensure_ascii=False）
         assert parsed["data"]["content"] == chinese_content
-        # 原始文本应该包含中文字符，不是 \uXXXX 转义
         assert chinese_content in text
     finally:
         os.unlink(temp_path)
+
+
+# ============== 打包模式测试（console script） ==============
+
+
+@pytest.fixture
+async def packaged_mcp_client():
+    """启动打包后的 autocode-mcp console script。"""
+    process = await asyncio.create_subprocess_exec(
+        "autocode-mcp",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+
+    client = MCPClient(process)
+
+    try:
+        yield client
+    finally:
+        await client.close()
+
+
+@pytest.mark.packaging
+@pytest.mark.asyncio
+async def test_packaged_console_script_handshake(packaged_mcp_client: MCPClient):
+    """测试打包后的 console script 能完成 MCP 握手。"""
+    result = await packaged_mcp_client.initialize()
+
+    assert "protocolVersion" in result
+    assert "serverInfo" in result
+    assert result["serverInfo"]["name"] == "autocode-mcp"
+
+
+@pytest.mark.packaging
+@pytest.mark.asyncio
+async def test_packaged_console_script_list_tools(packaged_mcp_client: MCPClient):
+    """测试打包后的 console script 能列出工具。"""
+    await packaged_mcp_client.initialize()
+
+    tools = await packaged_mcp_client.list_tools()
+
+    assert len(tools) == 15
+    tool_names = {t["name"] for t in tools}
+    assert "solution_build" in tool_names
+    assert "validator_build" in tool_names
+
+
+@pytest.mark.packaging
+@pytest.mark.asyncio
+async def test_packaged_console_script_call_tool(packaged_mcp_client: MCPClient):
+    """测试打包后的 console script 能调用工具。"""
+    await packaged_mcp_client.initialize()
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+        f.write("packaged test")
+        temp_path = f.name
+
+    try:
+        result = await packaged_mcp_client.send_request(
+            "tools/call", {"name": "file_read", "arguments": {"path": temp_path}}
+        )
+
+        assert "content" in result
+        assert not result.get("isError", True)
+
+        text = result["content"][0]["text"]
+        parsed = json.loads(text)
+        assert parsed["success"] is True
+        assert parsed["data"]["content"] == "packaged test"
+    finally:
+        os.unlink(temp_path)
+
+
+@pytest.mark.packaging
+def test_console_script_exists():
+    """验证 autocode-mcp console script 在环境中存在。"""
+    assert shutil.which("autocode-mcp") is not None
