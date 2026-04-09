@@ -40,7 +40,7 @@ uv tool install autocode-mcp
 
 ```bash
 git clone https://github.com/SummerOneTwo/AutoCode.git
-cd autocode-mcp
+cd AutoCode
 uv sync
 ```
 
@@ -454,12 +454,39 @@ problem_pack_polygon(
 
 ⚠️ **Important: This tool is designed for local trusted environments only**
 
-- **File Operations**: `file_read` and `file_save` can read/write arbitrary paths (use `problem_dir` parameter to limit scope)
-- **Code Execution**: Compiles and executes AI-generated C++ code with only time/memory limits, no sandbox isolation
-- **Use Cases**: Local development, competitive programming problem creation, AI-assisted coding in trusted environments
-- **Not Suitable For**: Multi-tenant environments, untrusted code execution, production-grade code execution platforms
+#### File Operations
 
-For stronger isolation, run inside a container or virtual machine.
+- **With `problem_dir` parameter**: `file_read` and `file_save` restrict access to paths within the specified directory
+- **Without `problem_dir` parameter**: These tools can read/write **any arbitrary path** on the filesystem
+- **Recommendation**: Always specify `problem_dir` when calling file operations to limit scope
+
+#### Code Execution
+
+- Compiles and executes AI-generated C++ code with only time/memory limits
+- No sandbox isolation (uses `prlimit` on Linux for memory limits only)
+- **Risk**: Malformed or malicious code could potentially affect the system
+
+#### Use Cases
+
+✅ **Suitable For**:
+- Local development machines
+- Competitive programming problem creation
+- AI-assisted coding in trusted environments
+- Personal workstations with regular backups
+
+❌ **Not Suitable For**:
+- Multi-tenant environments
+- Untrusted code execution
+- Production-grade code execution platforms
+- Shared servers without isolation
+
+#### Mitigation Strategies
+
+For stronger isolation, consider:
+- Running inside a Docker container
+- Using a virtual machine
+- Restricting filesystem permissions at the OS level
+- Running as a non-privileged user
 
 ### Generation Strategies
 
@@ -498,7 +525,7 @@ problems/your-problem/
 
 ```bash
 git clone https://github.com/SummerOneTwo/AutoCode.git
-cd autocode-mcp
+cd AutoCode
 uv sync
 ```
 

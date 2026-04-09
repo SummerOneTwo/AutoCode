@@ -40,7 +40,7 @@ uv tool install autocode-mcp
 
 ```bash
 git clone https://github.com/SummerOneTwo/AutoCode.git
-cd autocode-mcp
+cd AutoCode
 uv sync
 ```
 
@@ -454,12 +454,39 @@ problem_pack_polygon(
 
 ⚠️ **重要提示：本工具仅适用于本地可信环境**
 
-- **文件操作**：`file_read` 和 `file_save` 可读写任意路径（需显式指定 `problem_dir` 参数限制范围）
-- **代码执行**：编译并执行 AI 生成的 C++ 代码，仅提供时间/内存限制，无沙箱隔离
-- **适用场景**：本地开发、竞赛编程出题、可信环境下的 AI 辅助编程
-- **不适用场景**：多租户环境、不可信代码执行、生产级代码运行平台
+#### 文件操作
 
-如需更强的安全隔离，建议在容器或虚拟机中运行。
+- **指定 `problem_dir` 参数时**：`file_read` 和 `file_save` 限制在指定目录内访问
+- **不指定 `problem_dir` 参数时**：这些工具可以读写**任意路径**的文件
+- **建议**：调用文件操作时始终指定 `problem_dir` 以限制访问范围
+
+#### 代码执行
+
+- 编译并执行 AI 生成的 C++ 代码，仅提供时间/内存限制
+- 无沙箱隔离（Linux 上仅通过 `prlimit` 限制内存）
+- **风险**：畸形或恶意代码可能影响系统
+
+#### 适用场景
+
+✅ **适用于**：
+- 本地开发机器
+- 竞赛编程出题
+- 可信环境下的 AI 辅助编程
+- 有定期备份的个人工作站
+
+❌ **不适用于**：
+- 多租户环境
+- 不可信代码执行
+- 生产级代码运行平台
+- 无隔离的共享服务器
+
+#### 安全加固建议
+
+如需更强的安全隔离，建议：
+- 在 Docker 容器中运行
+- 使用虚拟机
+- 在操作系统层面限制文件系统权限
+- 以非特权用户身份运行
 
 ### 生成策略
 
@@ -498,7 +525,7 @@ problems/your-problem/
 
 ```bash
 git clone https://github.com/SummerOneTwo/AutoCode.git
-cd autocode-mcp
+cd AutoCode
 uv sync
 ```
 

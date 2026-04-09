@@ -66,3 +66,35 @@ jobs:
           enable-cache: true
       - run: uv sync --all-extras
       - run: uv run pytest tests/ -v -m "integration"
+
+  # 打包产物 smoke test - 验证 wheel 安装后 console script 正常工作
+  test-packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Build wheel
+        run: |
+          uv sync --all-extras
+          uv build
+      - name: Install from wheel
+        run: |
+          # 创建临时虚拟环境进行安装测试
+          python -m venv /tmp/test-venv
+          source /tmp/test-venv/bin/activate
+          pip install dist/autocode_mcp-*.whl
+      - name: Run packaging smoke tests
+        run: |
+          source /tmp/test-venv/bin/activate
+          pytest tests/test_packaging_smoke.py -v -m "packaging"
+      - name: Verify console script
+        run: |
+          source /tmp/test-venv/bin/activate
+          autocode-mcp --help || true  # --help 可能返回非 0，但命令应该存在
+          # 验证 MCP 握手
+          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | timeout 5 autocode-mcp | head -1

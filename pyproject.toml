@@ -35,7 +35,10 @@ artifacts = ["src/autocode_mcp/templates"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-markers = ["integration: marks tests as integration tests (deselect with '-m \"not integration\"')"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "packaging: marks tests as packaging smoke tests (run after uv build)",
+]
 
 [tool.ruff]
 line-length = 100
