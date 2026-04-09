@@ -552,13 +552,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-- Based on the paper ["AutoCode: LLMs as Problem Setters for Competitive Programming"](https://arxiv.org/abs/...)
+- Based on the paper ["AutoCode: LLMs as Problem Setters for Competitive Programming"](https://arxiv.org/abs/2510.12803)
 - Uses [testlib.h](https://github.com/MikeMirzayanov/testlib) for competitive programming utilities
 - Built on the [Model Context Protocol](https://modelcontextprotocol.io/)
 
 ## Links
 
-- [Documentation](https://github.com/your-repo/autocode-mcp#readme)
+- [Documentation](https://github.com/SummerOneTwo/AutoCode#readme)
 - [PyPI](https://pypi.org/project/autocode-mcp/)
-- [GitHub](https://github.com/your-repo/autocode-mcp)
-- [Issue Tracker](https://github.com/your-repo/autocode-mcp/issues)
+- [GitHub](https://github.com/SummerOneTwo/AutoCode)
+- [Issue Tracker](https://github.com/SummerOneTwo/AutoCode/issues)

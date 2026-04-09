@@ -552,13 +552,13 @@ MIT License - 详见 [LICENSE](LICENSE)。
 
 ## 致谢
 
-- 基于论文 ["AutoCode: LLMs as Problem Setters for Competitive Programming"](https://arxiv.org/abs/...)
+- 基于论文 ["AutoCode: LLMs as Problem Setters for Competitive Programming"](https://arxiv.org/abs/2510.12803)
 - 使用 [testlib.h](https://github.com/MikeMirzayanov/testlib) 竞赛编程工具库
 - 基于 [Model Context Protocol](https://modelcontextprotocol.io/) 构建
 
 ## 链接
 
-- [文档](https://github.com/your-repo/autocode-mcp#readme)
+- [文档](https://github.com/SummerOneTwo/AutoCode#readme)
 - [PyPI](https://pypi.org/project/autocode-mcp/)
-- [GitHub](https://github.com/your-repo/autocode-mcp)
-- [Issue Tracker](https://github.com/your-repo/autocode-mcp/issues)
+- [GitHub](https://github.com/SummerOneTwo/AutoCode)
+- [Issue Tracker](https://github.com/SummerOneTwo/AutoCode/issues)
