@@ -214,23 +214,19 @@ class InteractorBuildTool(Tool):
             # 这里简化处理：让解法和交互器都运行，等待完成
 
             try:
+                # 创建通信任务和超时任务（命名以便识别）
+                comm_task = asyncio.create_task(self._communicate(interactor, solution))
+                sleep_task = asyncio.create_task(asyncio.sleep(timeout))
+                sleep_task.set_name("sleep")
+
                 # 等待任一进程完成
                 done, pending = await asyncio.wait(
-                    [
-                        asyncio.create_task(self._communicate(interactor, solution)),
-                        asyncio.create_task(asyncio.sleep(timeout)),
-                    ],
+                    [comm_task, sleep_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
 
-                # 检查是否超时 - asyncio.wait 返回 set，需要遍历
-                timed_out = False
-                comm_task = None
-                for task in done:
-                    if task.get_name() == "sleep":
-                        timed_out = True
-                    else:
-                        comm_task = task
+                # 检查是否超时
+                timed_out = sleep_task in done
 
                 if timed_out:
                     interactor.kill()
@@ -264,8 +260,9 @@ class InteractorBuildTool(Tool):
         except Exception as e:
             return {"verdict": "RE", "reason": str(e)}
 
-        # 默认返回 AC（简化处理）
-        return {"verdict": "AC", "reason": "Test passed"}
+        # 如果走到这里，说明通信任务没有返回有效结果
+        # 这通常表示进程异常终止或通信失败
+        return {"verdict": "RE", "reason": "Interactor test failed to complete"}
 
     async def _communicate(
         self,

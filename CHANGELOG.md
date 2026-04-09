@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Generator 协议统一 (P1)**
   - `stress_test_run` 新增 `generator_args` 参数
   - 支持完整协议: `gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max>`
-  - 默认保持简单协议: `gen.exe <seed>`
+  - 默认使用完整协议（type=2 random）
 
 - **Verdict 完善 (P1)**
   - `checker_build` 根据 testlib.h 返回码正确区分 AC/WA/PE/TLE
@@ -124,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 
-- 完成 Interactor 完整验证逻辑，实现真实的交互测试
+- 添加 Interactor 基础验证逻辑，支持变异测试
 - 添加 compiler.py 单元测试（14 个测试用例）
 - 创建平台工具模块 `platform.py`，消除 `exe_ext` 判断的代码重复
 - 拆分 `StressTestRunTool.execute` 函数，提高代码可读性

@@ -319,3 +319,177 @@ async def test_problem_pack_polygon_dynamic_test_count():
             content = f.read()
             assert "<test-count>5</test-count>" in content
             assert "<test-count>20</test-count>" not in content
+
+
+@pytest.mark.asyncio
+async def test_problem_generate_tests_dedup():
+    """测试去重功能。"""
+    import shutil
+
+    if not shutil.which("g++"):
+        pytest.skip("g++ not available")
+
+    create_tool = ProblemCreateTool()
+    gen_tool = GeneratorBuildTool()
+    sol_tool = SolutionBuildTool()
+    generate_tool = ProblemGenerateTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        problem_dir = os.path.join(tmpdir, "dedup_test")
+        await create_tool.execute(problem_dir=problem_dir, problem_name="Dedup Test")
+
+        # Generator 固定输出相同内容（用于测试去重）
+        fixed_gen = """
+#include "testlib.h"
+#include <iostream>
+int main(int argc, char* argv[]) {
+    registerGen(argc, argv, 1);
+    std::cout << "1 2" << std::endl;  // 固定输出
+    return 0;
+}
+"""
+        simple_sol = """
+#include <iostream>
+int main() {
+    int a, b;
+    std::cin >> a >> b;
+    std::cout << a + b << std::endl;
+    return 0;
+}
+"""
+        await gen_tool.execute(problem_dir=problem_dir, code=fixed_gen)
+        await sol_tool.execute(problem_dir=problem_dir, solution_type="sol", code=simple_sol)
+
+        # 启用去重，请求 10 个测试但 generator 只能产生 1 种输出
+        result = await generate_tool.execute(
+            problem_dir=problem_dir,
+            test_count=10,
+            enable_dedup=True,
+            oversample_ratio=2.0,  # 尝试生成 20 个候选
+        )
+
+        # 由于去重，实际生成的测试应该少于请求的数量
+        # 因为 generator 只能产生 1 种输出，最终只有 1 个测试
+        # 这是一个 partial generation 失败
+        assert not result.success
+        assert "Partial generation" in result.error
+        # 验证只生成了 1 个测试（去重生效）
+        assert len(result.data.get("generated_tests", [])) == 1
+
+
+@pytest.mark.asyncio
+async def test_problem_generate_tests_balance():
+    """测试平衡分布功能。"""
+    import shutil
+
+    if not shutil.which("g++"):
+        pytest.skip("g++ not available")
+
+    create_tool = ProblemCreateTool()
+    gen_tool = GeneratorBuildTool()
+    sol_tool = SolutionBuildTool()
+    generate_tool = ProblemGenerateTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        problem_dir = os.path.join(tmpdir, "balance_test")
+        await create_tool.execute(problem_dir=problem_dir, problem_name="Balance Test")
+
+        # Generator 根据类型输出不同标记
+        type_aware_gen = """
+#include "testlib.h"
+#include <iostream>
+int main(int argc, char* argv[]) {
+    registerGen(argc, argv, 1);
+    int type = atoi(argv[2]);
+    std::cout << "type" << type << " " << rnd.next(1, 100) << std::endl;
+    return 0;
+}
+"""
+        simple_sol = """
+#include <iostream>
+int main() {
+    std::string s;
+    int n;
+    std::cin >> s >> n;
+    std::cout << s << " " << n << std::endl;
+    return 0;
+}
+"""
+        await gen_tool.execute(problem_dir=problem_dir, code=type_aware_gen)
+        await sol_tool.execute(problem_dir=problem_dir, solution_type="sol", code=simple_sol)
+
+        # 使用多种类型的配置
+        custom_configs = [
+            {"type": "1", "n_min": 1, "n_max": 10, "t_min": 1, "t_max": 1},  # tiny
+            {"type": "2", "n_min": 1, "n_max": 10, "t_min": 1, "t_max": 1},  # random
+            {"type": "3", "n_min": 1, "n_max": 10, "t_min": 1, "t_max": 1},  # extreme
+            {"type": "4", "n_min": 1, "n_max": 10, "t_min": 1, "t_max": 1},  # tle
+        ]
+
+        result = await generate_tool.execute(
+            problem_dir=problem_dir,
+            test_count=8,
+            test_configs=custom_configs,
+            enable_balance=True,
+            oversample_ratio=2.0,
+        )
+
+        assert result.success
+        assert result.data.get("balance_enabled") is True
+        # 检查类型分布
+        type_dist = result.data.get("type_distribution", {})
+        # 应该有 4 种类型，每种 2 个
+        assert len(type_dist) == 4
+
+
+@pytest.mark.asyncio
+async def test_problem_generate_tests_oversample():
+    """测试超额采样功能。"""
+    import shutil
+
+    if not shutil.which("g++"):
+        pytest.skip("g++ not available")
+
+    create_tool = ProblemCreateTool()
+    gen_tool = GeneratorBuildTool()
+    sol_tool = SolutionBuildTool()
+    generate_tool = ProblemGenerateTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        problem_dir = os.path.join(tmpdir, "oversample_test")
+        await create_tool.execute(problem_dir=problem_dir, problem_name="Oversample Test")
+
+        simple_gen = """
+#include "testlib.h"
+#include <iostream>
+int main(int argc, char* argv[]) {
+    registerGen(argc, argv, 1);
+    int seed = atoi(argv[1]);
+    rnd.setSeed(seed);
+    std::cout << rnd.next(1, 1000) << std::endl;
+    return 0;
+}
+"""
+        simple_sol = """
+#include <iostream>
+int main() {
+    int n;
+    std::cin >> n;
+    std::cout << n << std::endl;
+    return 0;
+}
+"""
+        await gen_tool.execute(problem_dir=problem_dir, code=simple_gen)
+        await sol_tool.execute(problem_dir=problem_dir, solution_type="sol", code=simple_sol)
+
+        result = await generate_tool.execute(
+            problem_dir=problem_dir,
+            test_count=10,
+            oversample_ratio=2.0,  # 生成 20 个候选
+        )
+
+        assert result.success
+        # 检查候选数量
+        candidates = result.data.get("candidates_generated", 0)
+        assert candidates >= 10  # 至少生成了 10 个候选
+        assert "from" in result.data.get("message", "")  # 消息中应该包含候选数量

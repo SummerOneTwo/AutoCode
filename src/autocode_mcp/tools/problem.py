@@ -4,12 +4,24 @@ Problem 工具组 - 题目管理。
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
+from dataclasses import dataclass
 
 from ..utils.compiler import run_binary, run_binary_with_args
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
+
+
+@dataclass
+class CandidateTest:
+    """候选测试数据。"""
+
+    input_data: str
+    output_data: str
+    type_param: str  # 1=tiny, 2=random, 3=extreme, 4=tle
+    signature: str
 
 
 class ProblemCreateTool(Tool):
@@ -186,6 +198,26 @@ class ProblemGenerateTestsTool(Tool):
                         "required": ["type", "n_min", "n_max", "t_min", "t_max"],
                     },
                 },
+                "enable_dedup": {
+                    "type": "boolean",
+                    "description": "启用去重（基于 MD5 signature）",
+                    "default": True,
+                },
+                "enable_validator_filter": {
+                    "type": "boolean",
+                    "description": "启用 Validator 过滤（自动检测 val.exe）",
+                    "default": True,
+                },
+                "enable_balance": {
+                    "type": "boolean",
+                    "description": "启用平衡分布（确保各策略类型均衡）",
+                    "default": True,
+                },
+                "oversample_ratio": {
+                    "type": "number",
+                    "description": "超额采样比例（生成候选数据 = test_count * ratio）",
+                    "default": 1.5,
+                },
             },
             "required": ["problem_dir"],
         }
@@ -197,11 +229,22 @@ class ProblemGenerateTestsTool(Tool):
         timeout: int = 60,
         constraints: dict | None = None,
         test_configs: list[dict] | None = None,
+        enable_dedup: bool = True,
+        enable_validator_filter: bool = True,
+        enable_balance: bool = True,
+        oversample_ratio: float = 1.5,
     ) -> ToolResult:
-        """执行测试数据生成。"""
+        """执行测试数据生成。
+
+        实现论文 Algorithm 2 的后处理步骤：
+        1. 生成超额候选数据
+        2. 去重（基于 MD5 signature）
+        3. Validator 过滤（自动检测 val.exe）
+        4. 平衡分布（按策略类型）
+        5. 采样最终 test_count 个
+        """
         # 验证 constraints 参数
         if constraints:
-            # 验证 n_max 和 n_min
             n_max = constraints.get("n_max")
             if n_max is not None and n_max <= 0:
                 return ToolResult.fail("n_max must be positive")
@@ -211,17 +254,14 @@ class ProblemGenerateTestsTool(Tool):
             if n_max is not None and n_min is not None and n_min > n_max:
                 return ToolResult.fail("n_min cannot be greater than n_max")
 
-            # 验证 t_max
             t_max = constraints.get("t_max")
             if t_max is not None and t_max <= 0:
                 return ToolResult.fail("t_max must be positive")
 
-            # 验证 sum_n_max
             sum_n_max = constraints.get("sum_n_max")
             if sum_n_max is not None and sum_n_max <= 0:
                 return ToolResult.fail("sum_n_max must be positive")
 
-            # 验证约束之间的关系
             if n_max is not None and sum_n_max is not None and n_max > sum_n_max:
                 return ToolResult.fail("n_max cannot be greater than sum_n_max")
             if t_max is not None and sum_n_max is not None and t_max > sum_n_max:
@@ -230,31 +270,37 @@ class ProblemGenerateTestsTool(Tool):
         # 验证 test_configs 参数
         if test_configs:
             for i, config in enumerate(test_configs):
-                # 验证 type 字段
                 if "type" not in config:
                     return ToolResult.fail(f"test_configs[{i}]: 'type' is required")
                 if config["type"] not in ("1", "2", "3", "4"):
-                    return ToolResult.fail(f"test_configs[{i}]: 'type' must be one of '1', '2', '3', '4'")
+                    return ToolResult.fail(
+                        f"test_configs[{i}]: 'type' must be one of '1', '2', '3', '4'"
+                    )
 
-                # 验证 n_min, n_max, t_min, t_max
                 for field in ["n_min", "n_max", "t_min", "t_max"]:
                     if field not in config:
                         return ToolResult.fail(f"test_configs[{i}]: '{field}' is required")
                     val = config[field]
                     if not isinstance(val, int) or val < 0:
-                        return ToolResult.fail(f"test_configs[{i}]: '{field}' must be a non-negative integer")
+                        return ToolResult.fail(
+                            f"test_configs[{i}]: '{field}' must be a non-negative integer"
+                        )
 
-                # 验证范围关系
                 if config["n_min"] > config["n_max"]:
-                    return ToolResult.fail(f"test_configs[{i}]: n_min cannot be greater than n_max")
+                    return ToolResult.fail(
+                        f"test_configs[{i}]: n_min cannot be greater than n_max"
+                    )
                 if config["t_min"] > config["t_max"]:
-                    return ToolResult.fail(f"test_configs[{i}]: t_min cannot be greater than t_max")
+                    return ToolResult.fail(
+                        f"test_configs[{i}]: t_min cannot be greater than t_max"
+                    )
 
         exe_ext = get_exe_extension()
 
         # 检查必要文件
         gen_exe = os.path.join(problem_dir, "files", f"gen{exe_ext}")
         sol_exe = os.path.join(problem_dir, "solutions", f"sol{exe_ext}")
+        val_exe = os.path.join(problem_dir, "files", f"val{exe_ext}")
         tests_dir = os.path.join(problem_dir, "tests")
 
         # 如果 files 目录下没有，检查根目录
@@ -262,22 +308,23 @@ class ProblemGenerateTestsTool(Tool):
             gen_exe = os.path.join(problem_dir, f"gen{exe_ext}")
         if not os.path.exists(sol_exe):
             sol_exe = os.path.join(problem_dir, f"sol{exe_ext}")
+        if not os.path.exists(val_exe):
+            val_exe = os.path.join(problem_dir, f"val{exe_ext}")
 
         if not os.path.exists(gen_exe):
             return ToolResult.fail("Generator not found. Run generator_build first.")
         if not os.path.exists(sol_exe):
             return ToolResult.fail("sol not found. Run solution_build first.")
 
+        # Validator 是否可用
+        validator_available = enable_validator_filter and os.path.exists(val_exe)
+
         # 创建/清空 tests 目录
         if os.path.exists(tests_dir):
             shutil.rmtree(tests_dir)
         os.makedirs(tests_dir)
 
-        generated_tests = []
-        errors = []
-
         # 获取测试配置
-        test_configs_list: list[tuple[str, str, str, str, str, str]]
         if test_configs:
             test_configs_list = [
                 (
@@ -293,13 +340,23 @@ class ProblemGenerateTestsTool(Tool):
         else:
             test_configs_list = self._get_default_configs(constraints)
 
-        for i, test_cfg in enumerate(test_configs_list[:test_count], 1):
-            test_file = os.path.join(tests_dir, f"{i:02d}.in")
-            ans_file = os.path.join(tests_dir, f"{i:02d}.ans")
+        # 计算需要生成的候选数量
+        candidate_count = int(test_count * oversample_ratio)
+
+        # 生成候选数据
+        candidates: list[CandidateTest] = []
+        signatures: set[str] = set()  # 用于去重
+        errors: list[tuple[int, str]] = []
+        seed = 1
+
+        while len(candidates) < candidate_count and seed < candidate_count * 10:
+            # 循环使用配置
+            cfg_idx = (seed - 1) % len(test_configs_list)
+            test_cfg = test_configs_list[cfg_idx]
 
             seed_offset, type_param, n_min, n_max, t_min, t_max = test_cfg
             cmd_args = [
-                str(i + int(seed_offset)),
+                str(seed + int(seed_offset)),
                 type_param,
                 str(n_min),
                 str(n_max),
@@ -308,35 +365,97 @@ class ProblemGenerateTestsTool(Tool):
             ]
 
             try:
-                # 生成输入（使用配置参数）
+                # 生成输入
                 gen_result = await run_binary_with_args(gen_exe, cmd_args, timeout=timeout)
-                # Generator 可能因 testlib.h 优化问题崩溃，但输出仍有效
                 if gen_result.timed_out or not gen_result.stdout.strip():
-                    errors.append((i, f"Generator failed: {gen_result.stderr}"))
+                    errors.append((seed, f"Generator failed: {gen_result.stderr}"))
+                    seed += 1
                     continue
 
-                with open(test_file, "w", encoding="utf-8") as f:
-                    f.write(gen_result.stdout)
+                input_data = gen_result.stdout
+
+                # 去重检查
+                if enable_dedup:
+                    sig = hashlib.md5(input_data.encode()).hexdigest()
+                    if sig in signatures:
+                        seed += 1
+                        continue
+                    signatures.add(sig)
+                else:
+                    sig = hashlib.md5(input_data.encode()).hexdigest()
+
+                # Validator 过滤
+                if validator_available:
+                    val_result = await run_binary(val_exe, input_data, timeout=timeout)
+                    if val_result.returncode != 0:
+                        # 输入无效，跳过
+                        seed += 1
+                        continue
 
                 # 生成答案
-                sol_result = await run_binary(sol_exe, gen_result.stdout, timeout=timeout)
+                sol_result = await run_binary(sol_exe, input_data, timeout=timeout)
                 if not sol_result.success:
-                    errors.append((i, f"sol failed: {sol_result.stderr}"))
+                    errors.append((seed, f"sol failed: {sol_result.stderr}"))
+                    seed += 1
                     continue
 
-                with open(ans_file, "w", encoding="utf-8") as f:
-                    f.write(sol_result.stdout)
-
-                generated_tests.append(i)
+                candidates.append(
+                    CandidateTest(
+                        input_data=input_data,
+                        output_data=sol_result.stdout,
+                        type_param=type_param,
+                        signature=sig,
+                    )
+                )
 
             except Exception as e:
-                errors.append((i, str(e)))
+                errors.append((seed, str(e)))
+
+            seed += 1
+
+        # 平衡分布和采样
+        if enable_balance and len(candidates) > test_count:
+            final_tests = self._balance_and_sample(candidates, test_count)
+        elif len(candidates) > test_count:
+            # 简单确定性采样（按 signature 排序）
+            sorted_candidates = sorted(candidates, key=lambda c: c.signature)
+            final_tests = sorted_candidates[:test_count]
+        else:
+            final_tests = candidates
+
+        # 写入文件
+        generated_tests = []
+        for i, candidate in enumerate(final_tests, 1):
+            test_file = os.path.join(tests_dir, f"{i:02d}.in")
+            ans_file = os.path.join(tests_dir, f"{i:02d}.ans")
+
+            with open(test_file, "w", encoding="utf-8") as f:
+                f.write(candidate.input_data)
+            with open(ans_file, "w", encoding="utf-8") as f:
+                f.write(candidate.output_data)
+
+            generated_tests.append(i)
+
+        # 统计信息
+        type_counts: dict[str, int] = {}
+        for c in final_tests:
+            type_counts[c.type_param] = type_counts.get(c.type_param, 0) + 1
+
+        type_names = {"1": "tiny", "2": "random", "3": "extreme", "4": "tle"}
+        type_distribution = {
+            type_names.get(k, k): v for k, v in type_counts.items()
+        }
 
         if len(generated_tests) == test_count:
             return ToolResult.ok(
                 tests_dir=tests_dir,
                 generated_tests=generated_tests,
-                message=f"Generated {len(generated_tests)} test cases",
+                type_distribution=type_distribution,
+                dedup_enabled=enable_dedup,
+                validator_filter_enabled=validator_available,
+                balance_enabled=enable_balance,
+                candidates_generated=len(candidates),
+                message=f"Generated {len(generated_tests)} test cases (from {len(candidates)} candidates)",
             )
         else:
             return ToolResult.fail(
@@ -344,6 +463,45 @@ class ProblemGenerateTestsTool(Tool):
                 generated_tests=generated_tests,
                 errors=errors,
             )
+
+    def _balance_and_sample(
+        self, candidates: list[CandidateTest], target_count: int
+    ) -> list[CandidateTest]:
+        """平衡分布并采样。
+
+        确保各策略类型的测试数据数量均衡。
+        使用确定性排序保证结果可重现。
+        """
+        # 按类型分组
+        by_type: dict[str, list[CandidateTest]] = {}
+        for c in candidates:
+            if c.type_param not in by_type:
+                by_type[c.type_param] = []
+            by_type[c.type_param].append(c)
+
+        # 计算每种类型应该采样多少
+        num_types = len(by_type)
+        if num_types == 0:
+            return []
+
+        base_count = target_count // num_types
+        remainder = target_count % num_types
+
+        result: list[CandidateTest] = []
+        type_order = sorted(by_type.keys())  # 确保确定性
+
+        for i, type_param in enumerate(type_order):
+            type_candidates = by_type[type_param]
+            # 前 remainder 个类型多分配一个
+            count = base_count + (1 if i < remainder else 0)
+            # 使用确定性排序而非随机采样，保证结果可重现
+            sorted_candidates = sorted(type_candidates, key=lambda c: c.signature)
+            if len(sorted_candidates) <= count:
+                result.extend(sorted_candidates)
+            else:
+                result.extend(sorted_candidates[:count])
+
+        return result[:target_count]
 
     def _get_default_configs(
         self, constraints: dict | None = None

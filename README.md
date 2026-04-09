@@ -39,7 +39,7 @@ uv tool install autocode-mcp
 ### From Source
 
 ```bash
-git clone https://github.com/your-repo/autocode-mcp.git
+git clone https://github.com/SummerOneTwo/AutoCode.git
 cd autocode-mcp
 uv sync
 ```
@@ -474,7 +474,7 @@ problems/your-problem/
 ### Setup
 
 ```bash
-git clone https://github.com/your-repo/autocode-mcp.git
+git clone https://github.com/SummerOneTwo/AutoCode.git
 cd autocode-mcp
 uv sync
 ```
