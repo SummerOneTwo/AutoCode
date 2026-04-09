@@ -11,7 +11,17 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Prompt, Resource, TextContent, Tool
+from mcp.types import (
+    CallToolResult,
+    GetPromptResult,
+    Prompt,
+    PromptMessage,
+    ReadResourceResult,
+    Resource,
+    TextContent,
+    TextResourceContents,
+    Tool,
+)
 
 from . import prompts, resources
 from .tools.base import Tool as BaseTool
@@ -86,33 +96,31 @@ async def list_tools() -> list[Tool]:
 
 
 @app.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     """执行工具调用。"""
     if name not in TOOLS:
-        return [
-            TextContent(
-                type="text",
-                text=f"Unknown tool: {name}",
-            )
-        ]
+        return CallToolResult(
+            content=[TextContent(type="text", text=f"Unknown tool: {name}")],
+            isError=True,
+        )
 
     tool = TOOLS[name]
     try:
         result = await tool.execute(**arguments)
-        return [
-            TextContent(
-                type="text",
-                text=str(result.to_dict()),
-            )
-        ]
+        result_dict = result.to_dict()
+        return CallToolResult(
+            content=[TextContent(type="text", text=str(result_dict))],
+            structuredContent=result_dict,
+            isError=not result.success,
+        )
     except Exception as e:
         error_result = ToolResult.fail(str(e))
-        return [
-            TextContent(
-                type="text",
-                text=str(error_result.to_dict()),
-            )
-        ]
+        error_dict = error_result.to_dict()
+        return CallToolResult(
+            content=[TextContent(type="text", text=str(error_dict))],
+            structuredContent=error_dict,
+            isError=True,
+        )
 
 
 def main() -> None:
@@ -148,16 +156,41 @@ async def list_resources() -> list[Resource]:
 
 
 @app.read_resource()
-async def read_resource(uri: str) -> str:
+async def read_resource(uri: str) -> ReadResourceResult:
     """读取资源内容。"""
     if uri.startswith("template://"):
         template_name = uri[11:]
         path = resources.get_template_path(template_name)
         if path:
             with open(path, encoding="utf-8") as f:
-                return f.read()
-        return f"Template not found: {template_name}"
-    return f"Unknown resource: {uri}"
+                content = f.read()
+            return ReadResourceResult(
+                contents=[
+                    TextResourceContents(
+                        uri=uri,
+                        text=content,
+                        mimeType="text/plain",
+                    )
+                ]
+            )
+        return ReadResourceResult(
+            contents=[
+                TextResourceContents(
+                    uri=uri,
+                    text=f"Template not found: {template_name}",
+                    mimeType="text/plain",
+                )
+            ]
+        )
+    return ReadResourceResult(
+        contents=[
+            TextResourceContents(
+                uri=uri,
+                text=f"Unknown resource: {uri}",
+                mimeType="text/plain",
+            )
+        ]
+    )
 
 
 @app.list_prompts()
@@ -173,12 +206,28 @@ async def list_prompts() -> list[Prompt]:
 
 
 @app.get_prompt()
-async def get_prompt(name: str, arguments: dict[str, str] | None = None) -> str:
+async def get_prompt(name: str, arguments: dict[str, str] | None = None) -> GetPromptResult:
     """获取提示词内容。"""
     content = prompts.get_prompt(name)
     if not content:
-        return f"Prompt not found: {name}"
-    return content
+        return GetPromptResult(
+            description="Error: Prompt not found",
+            messages=[
+                PromptMessage(
+                    role="user",
+                    content=TextContent(type="text", text=f"Prompt not found: {name}"),
+                )
+            ],
+        )
+    return GetPromptResult(
+        description=f"Prompt template: {name}",
+        messages=[
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text=content),
+            )
+        ],
+    )
 
 
 if __name__ == "__main__":

@@ -71,9 +71,8 @@ class ProblemCreateTool(Tool):
                 created_dirs.append(dir_path)
 
         # 复制 testlib.h
-        # 查找模板目录
-        package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        template_testlib = os.path.join(package_dir, "..", "..", "templates", "testlib.h")
+        from .. import TEMPLATES_DIR
+        template_testlib = os.path.join(TEMPLATES_DIR, "testlib.h")
 
         if os.path.exists(template_testlib):
             dest_testlib = os.path.join(problem_dir, "files", "testlib.h")
