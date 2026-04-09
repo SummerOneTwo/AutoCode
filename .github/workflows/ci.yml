@@ -88,6 +88,7 @@ jobs:
           python -m venv /tmp/test-venv
           source /tmp/test-venv/bin/activate
           pip install dist/autocode_mcp-*.whl
+          pip install pytest pytest-asyncio
       - name: Run packaging smoke tests
         run: |
           source /tmp/test-venv/bin/activate
