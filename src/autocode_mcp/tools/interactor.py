@@ -242,7 +242,8 @@ class InteractorBuildTool(Tool):
                 # 获取通信结果
                 if comm_task and not comm_task.cancelled():
                     result = comm_task.result()
-                    return result
+                    if result:
+                        return result
 
             except TimeoutError:
                 interactor.kill()

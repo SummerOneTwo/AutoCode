@@ -114,6 +114,7 @@ async def test_interactor_with_reference_solution():
         pytest.skip("g++ not available")
 
     from autocode_mcp.tools.solution import SolutionBuildTool
+    from autocode_mcp.utils.platform import get_exe_extension
 
     tool = InteractorBuildTool()
     sol_tool = SolutionBuildTool()
@@ -123,9 +124,9 @@ async def test_interactor_with_reference_solution():
         build_result = await tool.execute(problem_dir=tmpdir, code=INTERACTOR_CODE)
         assert build_result.success
 
-        # 构建正确的参考解法 - solution_build 保存到 solutions/sol.exe
+        # 构建正确的参考解法 - solution_build 保存到 solutions/sol<exe>
         await sol_tool.execute(problem_dir=tmpdir, solution_type="sol", code=SIMPLE_SOLUTION)
-        correct_sol_exe = os.path.join(tmpdir, "solutions", "sol.exe")
+        correct_sol_exe = os.path.join(tmpdir, "solutions", f"sol{get_exe_extension()}")
 
         # 验证正确解法
         result = await tool.execute(
