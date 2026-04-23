@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-24
+
+### Features
+
+- **新增 problem_validate 工具**
+  - 验证题面中的样例答案是否正确（运行 sol）
+  - 验证 tests/ 目录下的样例文件是否与 sol 输出一致
+  - 支持多种样例格式：Markdown code block、纯文本格式（`样例输入：`/`Sample Input:`）
+  - 新增 `skills/problem-validate/SKILL.md` 验证 skill 文档
+
+- **工作流变更**
+  - 新增验证步骤：`stress_test_run -> problem_validate -> problem_generate_tests`
+  - `problem_generate_tests` 前必须先通过 `problem_validate` 验证
+  - 更新 `agents/autocode-workflow.md` 和 `skills/autocode-workflow/SKILL.md`
+
+### Bug Fixes
+
+- **Windows 平台 testlib 程序兼容性**
+  - 修复 Windows 上 testlib strict 模式期望 CRLF 换行符的问题
+  - 将输入数据的 LF 转换为 CRLF 以满足 validator 的 `readEoln()` 要求
+
+- **problem_validate 工具修复**
+  - 无样例时正确返回失败而非成功
+  - 重新验证失败后正确清除缓存状态
+
+### Tests
+
+- 新增 `tests/test_validation.py`（15 个测试用例）
+- 测试数量从 173 增至 176
+
 ## [0.4.0] - 2026-04-09
 
 ## [0.4.1] - 2026-04-09
