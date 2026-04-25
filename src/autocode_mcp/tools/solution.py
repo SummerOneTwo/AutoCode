@@ -49,7 +49,11 @@ class SolutionBuildTool(Tool, BuildToolMixin):
                 },
                 "code": {
                     "type": "string",
-                    "description": "解法的 C++ 代码",
+                    "description": "C++ 源代码（与 source_path 二选一）",
+                },
+                "source_path": {
+                    "type": "string",
+                    "description": "源文件路径，相对于 problem_dir 或绝对路径。与 code 二选一，优先级高于 code",
                 },
                 "compiler": {
                     "type": "string",
@@ -57,17 +61,38 @@ class SolutionBuildTool(Tool, BuildToolMixin):
                     "default": "g++",
                 },
             },
-            "required": ["problem_dir", "solution_type", "code"],
+            "required": ["problem_dir", "solution_type"],
         }
 
     async def execute(
         self,
         problem_dir: str,
         solution_type: Literal["sol", "brute"],
-        code: str,
+        code: str | None = None,
+        source_path: str | None = None,
         compiler: str = "g++",
     ) -> ToolResult:
         """执行解法构建。"""
+        # 解析源代码：source_path 优先于 code
+        source_dir = None
+        if source_path:
+            if not os.path.isabs(source_path):
+                source_path = os.path.join(problem_dir, source_path)
+            if not os.path.exists(source_path):
+                return ToolResult.fail(f"Source file not found: {source_path}")
+            try:
+                with open(source_path, encoding="utf-8") as f:
+                    code = f.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(source_path, encoding="latin-1") as f:
+                        code = f.read()
+                except Exception as e:
+                    return ToolResult.fail(f"Failed to read source file: {e}")
+            source_dir = os.path.dirname(os.path.abspath(source_path))
+        elif code is None:
+            return ToolResult.fail("Either 'code' or 'source_path' must be provided")
+
         # 确保目录存在
         os.makedirs(problem_dir, exist_ok=True)
 
@@ -91,7 +116,8 @@ class SolutionBuildTool(Tool, BuildToolMixin):
         binary_name = f"{solution_type}{exe_ext}"
         binary_path = os.path.join(solutions_dir, binary_name)
 
-        result = await self.build(source_path, binary_path, compiler=compiler)
+        include_dirs = [source_dir] if source_dir else None
+        result = await self.build(source_path, binary_path, compiler=compiler, include_dirs=include_dirs)
 
         if not result.success:
             return ToolResult.fail(

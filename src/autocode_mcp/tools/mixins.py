@@ -23,6 +23,7 @@ class BuildToolMixin:
         std: str = "c++20",
         opt_level: str = "O2",
         timeout: int = 30,
+        include_dirs: list[str] | None = None,
     ) -> CompileResult:
         return await compile_cpp(
             source_path,
@@ -31,6 +32,7 @@ class BuildToolMixin:
             compiler=compiler,
             std=std,
             opt_level=opt_level,
+            include_dirs=include_dirs,
         )
 
 
