@@ -66,7 +66,31 @@ AutoCode/
 | stress_test_run | 压力测试 |
 | problem_create | 初始化题目 |
 | problem_generate_tests | 生成测试数据 |
+| problem_validate | 验证题面样例 |
 | problem_pack_polygon | 打包为 Polygon 格式 |
+
+## 题目目录结构
+
+`problem_create` 初始化后的目录布局：
+
+```
+<problem_dir>/
+├── solutions/          # 解法
+│   ├── sol.cpp         # 标准解
+│   └── brute.cpp       # 暴力解
+├── files/              # 辅助程序
+│   ├── gen.cpp         # 生成器
+│   ├── val.cpp         # 校验器
+│   ├── checker.cpp     # 检查器（可选）
+│   ├── interactor.cpp  # 交互器（可选）
+│   └── testlib.h       # testlib 头文件
+├── statements/         # 题面
+│   └── README.md
+└── tests/              # 生成的测试数据
+    ├── 01.in
+    ├── 01.ans
+    └── ...
+```
 
 ## 出题工作流程
 

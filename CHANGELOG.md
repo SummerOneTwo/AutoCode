@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-25
+
+### Features
+
+- **source_path 参数**: 所有构建工具（solution_build, generator_build, validator_build, checker_build, interactor_build）新增 `source_path` 参数，可直接指定源文件路径，无需传入完整源码字符串。`code` 参数不再为必填，与 `source_path` 二选一。
+- **source_path 编码回退**: 自动处理非 UTF-8 编码的源文件，先尝试 UTF-8 读取，失败后回退到 latin-1（宽松解码，不会抛异常但可能产生乱码）。
+- **source_path 相对 include 支持**: 当 `source_path` 指向外部文件时，自动将源文件父目录加入编译 include 路径，确保 `#include "helper.h"` 等相对引用正常工作。
+
+### Improvements
+
+- **stress_test_run 错误信息增强**: Generator 失败时现在包含 `seed`、`cmd_args`、`stdout`、`stderr`、`last_input`（上一次成功生成的输入数据），便于调试。
+- **stress_test_run 失败模式区分**: 超时、空输出、崩溃三种失败模式现在给出不同的提示信息，不再统一附加 "Check that the generator accepts command-line arguments"。
+- **generator_args 文档完善**: `stress_test_run` 的 `generator_args` 参数现在明确说明调用协议 `gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max>`，以及各字段的含义和可选值。
+- **n_max 参数关系澄清**: 顶层 `n_max` 参数说明中注明其同时作为 `generator_args.n_max` 的默认值，成功结果中新增 `effective_n_max` 字段。
+- **题目目录结构文档**: CLAUDE.md 新增题目目录结构说明，明确 `solutions/`、`files/`、`statements/`、`tests/` 的用途和文件命名。
+
 ## [0.5.0] - 2026-04-24
 
 ### Features

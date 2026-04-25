@@ -50,7 +50,11 @@ class ValidatorBuildTool(Tool, BuildToolMixin):
                 },
                 "code": {
                     "type": "string",
-                    "description": "Validator C++ 代码（基于 testlib.h）",
+                    "description": "C++ 源代码（与 source_path 二选一）",
+                },
+                "source_path": {
+                    "type": "string",
+                    "description": "源文件路径，相对于 problem_dir 或绝对路径。与 code 二选一，优先级高于 code",
                 },
                 "test_cases": {
                     "type": "array",
@@ -70,17 +74,42 @@ class ValidatorBuildTool(Tool, BuildToolMixin):
                     "default": "g++",
                 },
             },
-            "required": ["problem_dir", "code"],
+            "required": ["problem_dir"],
+            "anyOf": [
+                {"required": ["code"]},
+                {"required": ["source_path"]},
+            ],
         }
 
     async def execute(
         self,
         problem_dir: str,
-        code: str,
+        code: str | None = None,
+        source_path: str | None = None,
         test_cases: list[dict] | None = None,
         compiler: str = "g++",
     ) -> ToolResult:
         """执行 Validator 构建。"""
+        # 解析源代码：source_path 优先于 code
+        source_dir = None
+        if source_path:
+            if not os.path.isabs(source_path):
+                source_path = os.path.join(problem_dir, source_path)
+            if not os.path.exists(source_path):
+                return ToolResult.fail(f"Source file not found: {source_path}")
+            try:
+                with open(source_path, encoding="utf-8") as f:
+                    code = f.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(source_path, encoding="latin-1") as f:
+                        code = f.read()
+                except Exception as e:
+                    return ToolResult.fail(f"Failed to read source file: {e}")
+            source_dir = os.path.dirname(os.path.abspath(source_path))
+        elif code is None:
+            return ToolResult.fail("Either 'code' or 'source_path' must be provided")
+
         # 确保目录存在
         os.makedirs(problem_dir, exist_ok=True)
 
@@ -99,7 +128,8 @@ class ValidatorBuildTool(Tool, BuildToolMixin):
         # 编译
         binary_path = os.path.join(files_dir, f"val{get_exe_extension()}")
 
-        compile_result = await self.build(source_path, binary_path, compiler=compiler)
+        include_dirs = [source_dir] if source_dir else None
+        compile_result = await self.build(source_path, binary_path, compiler=compiler, include_dirs=include_dirs)
 
         if not compile_result.success:
             return ToolResult.fail(

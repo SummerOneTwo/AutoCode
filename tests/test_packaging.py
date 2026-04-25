@@ -11,7 +11,7 @@ def test_import():
     """测试模块导入。"""
     from autocode_mcp import __version__
 
-    assert __version__ == "0.5.0"
+    assert __version__ == "0.6.0"
 
 
 def test_tool_result():
@@ -290,3 +290,103 @@ int main(int argc, char* argv[]) {
         test_results = result.structuredContent.get("test_results", [])
         if test_results:
             assert test_results[0].get("actual_verdict") == "FAIL"
+
+
+# ============== source_path 参数测试 ==============
+
+
+@pytest.mark.asyncio
+async def test_solution_build_source_path():
+    """测试 solution_build 使用 source_path 参数。"""
+    from autocode_mcp.server import call_tool, register_all_tools
+
+    register_all_tools()
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.makedirs(os.path.join(tmpdir, "solutions"))
+        source_file = os.path.join(tmpdir, "solutions", "sol.cpp")
+        with open(source_file, "w", encoding="utf-8") as f:
+            f.write('#include <iostream>\nint main() { std::cout << 42; return 0; }')
+
+        result = await call_tool(
+            "solution_build",
+            {"problem_dir": tmpdir, "solution_type": "sol", "source_path": source_file},
+        )
+        assert result.isError is False
+
+
+@pytest.mark.asyncio
+async def test_solution_build_source_path_not_found():
+    """测试 source_path 文件不存在时报错。"""
+    from autocode_mcp.server import call_tool, register_all_tools
+
+    register_all_tools()
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await call_tool(
+            "solution_build",
+            {
+                "problem_dir": tmpdir,
+                "solution_type": "sol",
+                "source_path": os.path.join(tmpdir, "nonexistent.cpp"),
+            },
+        )
+        assert result.isError is True
+        assert "not found" in result.structuredContent.get("error", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_solution_build_neither_code_nor_source_path():
+    """测试既不提供 code 也不提供 source_path 时报错。"""
+    from autocode_mcp.server import call_tool, register_all_tools
+
+    register_all_tools()
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await call_tool(
+            "solution_build",
+            {"problem_dir": tmpdir, "solution_type": "sol"},
+        )
+        assert result.isError is True
+        error = result.structuredContent.get("error", "").lower()
+        assert "either" in error or "must be provided" in error
+
+
+# ============== stress_test 错误诊断测试 ==============
+
+
+@pytest.mark.asyncio
+async def test_stress_test_generator_timeout_hint():
+    """测试 generator 超时时返回特定提示和数据字段。"""
+    from autocode_mcp.server import call_tool, register_all_tools
+
+    register_all_tools()
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.makedirs(os.path.join(tmpdir, "files"))
+        os.makedirs(os.path.join(tmpdir, "solutions"))
+
+        gen_code = '#include "testlib.h"\nint main(int argc, char* argv[]) { while(true); return 0; }'
+        gen_result = await call_tool("generator_build", {"problem_dir": tmpdir, "code": gen_code})
+        if gen_result.isError:
+            pytest.skip("Generator compilation failed (g++ not available)")
+
+        simple_code = '#include <iostream>\nint main() { int x; std::cin >> x; std::cout << x; return 0; }'
+        await call_tool("solution_build", {"problem_dir": tmpdir, "solution_type": "sol", "code": simple_code})
+        await call_tool("solution_build", {"problem_dir": tmpdir, "solution_type": "brute", "code": simple_code})
+
+        result = await call_tool("stress_test_run", {"problem_dir": tmpdir, "trials": 1, "timeout": 2})
+        assert result.isError is True
+        error_msg = result.structuredContent.get("error", "").lower()
+        assert "generator failed" in error_msg
+        data = result.structuredContent.get("data", {})
+        assert "seed" in data
+        assert "cmd_args" in data
