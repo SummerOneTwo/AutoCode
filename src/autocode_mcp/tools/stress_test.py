@@ -169,7 +169,7 @@ class StressTestRunTool(Tool):
 
                 # 2. 验证输入（如果有 validator）
                 if os.path.exists(val_exe):
-                    with open(input_path) as f:
+                    with open(input_path, encoding="utf-8") as f:
                         input_data = f.read()
                     val_result = await run_binary(val_exe, input_data, timeout=timeout)
                     if val_result.return_code != 0:
@@ -179,7 +179,7 @@ class StressTestRunTool(Tool):
                         break
 
                 # 3. 运行 sol 和 brute，比较输出
-                with open(input_path) as f:
+                with open(input_path, encoding="utf-8") as f:
                     input_data = f.read()
                 last_input = input_data
 

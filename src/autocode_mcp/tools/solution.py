@@ -62,6 +62,10 @@ class SolutionBuildTool(Tool, BuildToolMixin):
                 },
             },
             "required": ["problem_dir", "solution_type"],
+            "anyOf": [
+                {"required": ["code"]},
+                {"required": ["source_path"]},
+            ],
         }
 
     async def execute(

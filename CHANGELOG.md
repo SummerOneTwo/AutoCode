@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 
 - **source_path 参数**: 所有构建工具（solution_build, generator_build, validator_build, checker_build, interactor_build）新增 `source_path` 参数，可直接指定源文件路径，无需传入完整源码字符串。`code` 参数不再为必填，与 `source_path` 二选一。
-- **source_path 编码回退**: 自动处理非 UTF-8 编码的源文件（如 GBK），先尝试 UTF-8 读取，失败后回退到 latin-1。
+- **source_path 编码回退**: 自动处理非 UTF-8 编码的源文件，先尝试 UTF-8 读取，失败后回退到 latin-1（宽松解码，不会抛异常但可能产生乱码）。
 - **source_path 相对 include 支持**: 当 `source_path` 指向外部文件时，自动将源文件父目录加入编译 include 路径，确保 `#include "helper.h"` 等相对引用正常工作。
 
 ### Improvements

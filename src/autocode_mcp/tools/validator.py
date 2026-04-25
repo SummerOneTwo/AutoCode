@@ -75,6 +75,10 @@ class ValidatorBuildTool(Tool, BuildToolMixin):
                 },
             },
             "required": ["problem_dir"],
+            "anyOf": [
+                {"required": ["code"]},
+                {"required": ["source_path"]},
+            ],
         }
 
     async def execute(
