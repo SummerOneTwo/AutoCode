@@ -75,8 +75,9 @@ class GeneratorBuildTool(Tool, BuildToolMixin):
     ) -> ToolResult:
         """执行 Generator 构建。"""
         resolved, err = resolve_source(problem_dir, code, source_path)
-        if resolved is None:
+        if err is not None:
             return err
+        assert resolved is not None
 
         os.makedirs(problem_dir, exist_ok=True)
         files_dir = os.path.join(problem_dir, "files")
