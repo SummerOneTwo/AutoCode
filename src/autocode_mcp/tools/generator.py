@@ -12,7 +12,7 @@ import os
 from ..utils.compiler import run_binary, run_binary_with_args
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
-from .mixins import BuildToolMixin
+from .mixins import BuildToolMixin, resolve_source
 
 
 class GeneratorBuildTool(Tool, BuildToolMixin):
@@ -74,55 +74,44 @@ class GeneratorBuildTool(Tool, BuildToolMixin):
         compiler: str = "g++",
     ) -> ToolResult:
         """执行 Generator 构建。"""
-        # 解析源代码：source_path 优先于 code
-        source_dir = None
-        if source_path:
-            if not os.path.isabs(source_path):
-                source_path = os.path.join(problem_dir, source_path)
-            if not os.path.exists(source_path):
-                return ToolResult.fail(f"Source file not found: {source_path}")
-            try:
-                with open(source_path, encoding="utf-8") as f:
-                    code = f.read()
-            except UnicodeDecodeError:
-                try:
-                    with open(source_path, encoding="latin-1") as f:
-                        code = f.read()
-                except Exception as e:
-                    return ToolResult.fail(f"Failed to read source file: {e}")
-            source_dir = os.path.dirname(os.path.abspath(source_path))
-        elif code is None:
-            return ToolResult.fail("Either 'code' or 'source_path' must be provided")
+        resolved, err = resolve_source(problem_dir, code, source_path)
+        if err is not None:
+            return err
+        assert resolved is not None
 
         os.makedirs(problem_dir, exist_ok=True)
-
-        # 保存到 files/ 子目录
         files_dir = os.path.join(problem_dir, "files")
         os.makedirs(files_dir, exist_ok=True)
 
-        source_path = os.path.join(files_dir, "gen.cpp")
+        canonical_path = os.path.join(files_dir, "gen.cpp")
         try:
-            with open(source_path, "w", encoding="utf-8") as f:
-                f.write(code)
+            with open(canonical_path, "w", encoding="utf-8") as f:
+                f.write(resolved.code)
         except Exception as e:
             return ToolResult.fail(f"Failed to save code: {str(e)}")
 
         exe_ext = get_exe_extension()
         binary_path = os.path.join(files_dir, f"gen{exe_ext}")
 
-        include_dirs = [source_dir] if source_dir else None
-        compile_result = await self.build(source_path, binary_path, compiler=compiler, include_dirs=include_dirs)
+        compile_source = resolved.original_source_path or canonical_path
+        include_dirs = [resolved.include_dir] if resolved.include_dir else None
+        compile_result = await self.build(compile_source, binary_path, compiler=compiler, include_dirs=include_dirs)
 
         if not compile_result.success:
             return ToolResult.fail(
                 f"Compilation failed: {compile_result.error}",
-                source_path=source_path,
+                source_path=compile_source,
+                canonical_path=canonical_path,
                 compile_log=compile_result.stderr,
             )
 
+        binary_size = os.path.getsize(binary_path) if os.path.exists(binary_path) else 0
+
         return ToolResult.ok(
-            source_path=source_path,
+            source_path=compile_source,
+            canonical_path=canonical_path,
             binary_path=binary_path,
+            binary_size=binary_size,
             compile_log=compile_result.stderr,
             message="Generator built successfully",
         )
@@ -207,6 +196,12 @@ class GeneratorRunTool(Tool):
                     "description": "T 最大值",
                     "default": 1,
                 },
+                "extra_args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "附加命令行参数，追加在标准 6 参数之后传递给 generator",
+                    "default": [],
+                },
             },
             "required": ["problem_dir", "strategies"],
         }
@@ -222,9 +217,11 @@ class GeneratorRunTool(Tool):
         n_max: int = 100000,
         t_min: int = 1,
         t_max: int = 1,
+        extra_args: list[str] | None = None,
     ) -> ToolResult:
         """执行数据生成。"""
         exe_ext = get_exe_extension()
+        extra_args = extra_args or []
 
         # 检查 generator - 优先查找 files/ 子目录
         gen_exe = os.path.join(problem_dir, "files", f"gen{exe_ext}")
@@ -262,8 +259,8 @@ class GeneratorRunTool(Tool):
             type_param = strategy_type_map.get(strategy, "2")
 
             # 运行 generator
-            # gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max>
-            cmd_args = [str(seed), type_param, str(n_min), str(n_max), str(t_min), str(t_max)]
+            # gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max> [extra_args...]
+            cmd_args = [str(seed), type_param, str(n_min), str(n_max), str(t_min), str(t_max)] + extra_args
 
             gen_result = await run_binary_with_args(
                 gen_exe,

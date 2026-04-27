@@ -14,6 +14,9 @@ from autocode_mcp.tools.problem import (
     ProblemPackPolygonTool,
 )
 from autocode_mcp.tools.solution import SolutionBuildTool
+from autocode_mcp.tools.test_verify import ProblemVerifyTestsTool
+from autocode_mcp.utils.compiler import RunResult
+from autocode_mcp.utils.platform import get_exe_extension
 
 
 @pytest.mark.asyncio
@@ -291,6 +294,157 @@ async def test_problem_generate_tests_test_configs_validation():
     )
     assert not result.success
     assert "Generator not found" in result.error  # 验证通过，但找不到 generator
+
+
+@pytest.mark.asyncio
+async def test_problem_generate_tests_rejects_unsafe_output_dir():
+    """测试拒绝危险的测试输出目录。"""
+    tool = ProblemGenerateTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        problem_dir = os.path.join(tmpdir, "unsafe_output")
+        os.makedirs(os.path.join(problem_dir, "files"))
+        os.makedirs(os.path.join(problem_dir, "solutions"))
+
+        result = await tool.execute(problem_dir=problem_dir, output_dir=".")
+        assert not result.success
+        assert "output_dir cannot be the problem_dir root" in result.error
+
+        result = await tool.execute(problem_dir=problem_dir, output_dir="solutions")
+        assert not result.success
+        assert "reserved directory" in result.error
+
+        result = await tool.execute(problem_dir=problem_dir, output_dir="solutions/generated")
+        assert not result.success
+        assert "reserved directory" in result.error
+
+        outside_dir = os.path.join(tmpdir, "outside")
+        result = await tool.execute(problem_dir=problem_dir, output_dir=outside_dir)
+        assert not result.success
+        assert "output_dir must be inside problem_dir" in result.error
+
+
+@pytest.mark.asyncio
+async def test_problem_generate_tests_rejects_symlinked_output_dir():
+    """测试拒绝指向题目目录外部的符号链接输出目录。"""
+    tool = ProblemGenerateTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        problem_dir = os.path.join(tmpdir, "symlink_output")
+        outside_dir = os.path.join(tmpdir, "outside_tests")
+        link_dir = os.path.join(problem_dir, "tests_link")
+        os.makedirs(os.path.join(problem_dir, "files"))
+        os.makedirs(os.path.join(problem_dir, "solutions"))
+        os.makedirs(outside_dir)
+
+        try:
+            os.symlink(outside_dir, link_dir, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlink creation is not available")
+
+        result = await tool.execute(problem_dir=problem_dir, output_dir="tests_link")
+
+        assert not result.success
+        assert "output_dir must be inside problem_dir" in result.error
+
+
+def test_problem_generate_tests_clear_only_generated_files():
+    """测试清理输出目录时只删除旧的 .in/.ans 文件。"""
+    tool = ProblemGenerateTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tests_dir = os.path.join(tmpdir, "tests")
+        os.makedirs(tests_dir)
+        keep_path = os.path.join(tests_dir, "notes.txt")
+        old_in_path = os.path.join(tests_dir, "01.in")
+        old_ans_path = os.path.join(tests_dir, "01.ans")
+
+        with open(keep_path, "w", encoding="utf-8") as f:
+            f.write("keep me")
+        with open(old_in_path, "w", encoding="utf-8") as f:
+            f.write("old input")
+        with open(old_ans_path, "w", encoding="utf-8") as f:
+            f.write("old answer")
+
+        result = tool._clear_generated_tests(tests_dir)
+
+        assert result is None
+        assert os.path.exists(keep_path)
+        assert not os.path.exists(old_in_path)
+        assert not os.path.exists(old_ans_path)
+
+
+@pytest.mark.asyncio
+async def test_problem_generate_tests_uses_custom_sol_name(monkeypatch):
+    """测试生成答案时使用自定义 sol_name。"""
+    tool = ProblemGenerateTestsTool()
+
+    async def fake_run_binary_with_args(*args, **kwargs):
+        return RunResult(success=True, stdout="7\n")
+
+    async def fake_run_binary(binary_path, stdin="", timeout=5, memory_mb=256):
+        assert os.path.basename(binary_path) == f"accepted{get_exe_extension()}"
+        assert stdin == "7\n"
+        return RunResult(success=True, stdout="7\n")
+
+    monkeypatch.setattr("autocode_mcp.tools.problem.run_binary_with_args", fake_run_binary_with_args)
+    monkeypatch.setattr("autocode_mcp.tools.problem.run_binary", fake_run_binary)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        problem_dir = os.path.join(tmpdir, "custom_sol")
+        files_dir = os.path.join(problem_dir, "files")
+        solutions_dir = os.path.join(problem_dir, "solutions")
+        os.makedirs(files_dir)
+        os.makedirs(solutions_dir)
+
+        exe_ext = get_exe_extension()
+        open(os.path.join(files_dir, f"gen{exe_ext}"), "w").close()
+        open(os.path.join(solutions_dir, f"accepted{exe_ext}"), "w").close()
+
+        result = await tool.execute(
+            problem_dir=problem_dir,
+            test_count=1,
+            sol_name="accepted",
+            enable_dedup=False,
+            oversample_ratio=1.0,
+        )
+
+        assert result.success
+        assert result.data["sol_name"] == "accepted"
+        assert os.path.exists(os.path.join(problem_dir, "tests", "01.in"))
+        assert os.path.exists(os.path.join(problem_dir, "tests", "01.ans"))
+
+
+def test_problem_verify_tests_file_count_requires_contiguous_numeric_names():
+    """测试 file_count 会检查数字文件名连续性。"""
+    tool = ProblemVerifyTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for name in ["01.in", "01.ans", "03.in", "03.ans"]:
+            with open(os.path.join(tmpdir, name), "w", encoding="utf-8") as f:
+                f.write("x\n")
+
+        result = tool._check_file_count(tmpdir)
+
+        assert not result["passed"]
+        assert result["missing_indices"] == [2]
+
+
+def test_problem_verify_tests_file_count_reports_large_gaps():
+    """测试跳到大编号时会报告完整缺失区间。"""
+    tool = ProblemVerifyTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for name in ["01.in", "01.ans", "100.in", "100.ans"]:
+            with open(os.path.join(tmpdir, name), "w", encoding="utf-8") as f:
+                f.write("x\n")
+
+        result = tool._check_file_count(tmpdir)
+
+        assert not result["passed"]
+        assert result["missing_indices"][0] == 2
+        assert result["missing_indices"][-1] == 99
+        assert len(result["missing_indices"]) == 98
 
 
 @pytest.mark.asyncio

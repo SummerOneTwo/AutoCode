@@ -62,9 +62,25 @@ class StressTestRunTool(Tool):
                     "description": "单次执行超时（秒）",
                     "default": 30,
                 },
+                "sol_name": {
+                    "type": "string",
+                    "description": "标准解法文件名（不含扩展名），默认 'sol'",
+                },
+                "brute_name": {
+                    "type": "string",
+                    "description": "暴力解法文件名（不含扩展名），默认 'brute'",
+                },
+                "types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["1", "2", "3", "4"],
+                    },
+                    "description": "生成策略类型列表，轮次之间循环使用。例如 ['1','2','3','4'] 表示依次使用 tiny, random, extreme, tle。未指定时使用 generator_args.type 或默认 '2'",
+                },
                 "generator_args": {
                     "type": "object",
-                    "description": "Generator 命令行参数。调用协议: gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max>。seed 由系统自动填充为当前轮次，其余参数在此指定",
+                    "description": "Generator 命令行参数。调用协议: gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max> [extra_args...]。seed 由系统自动填充为当前轮次，其余参数在此指定",
                     "properties": {
                         "type": {
                             "type": "string",
@@ -90,6 +106,12 @@ class StressTestRunTool(Tool):
                             "default": 1,
                             "description": "测试组数 T 的最大值",
                         },
+                        "extra_args": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "附加命令行参数，追加在标准 6 参数之后传递给 generator",
+                            "default": [],
+                        },
                     },
                 },
             },
@@ -102,30 +124,35 @@ class StressTestRunTool(Tool):
         trials: int = 1000,
         n_max: int = 100,
         timeout: int = 30,
+        sol_name: str | None = None,
+        brute_name: str | None = None,
+        types: list[str] | None = None,
         generator_args: dict | None = None,
     ) -> ToolResult:
         """执行对拍测试。"""
         exe_ext = get_exe_extension()
+        effective_sol_name = sol_name or "sol"
+        effective_brute_name = brute_name or "brute"
 
         # 检查必要文件 - 优先查找子目录，回退到根目录
         gen_exe = os.path.join(problem_dir, "files", f"gen{exe_ext}")
         if not os.path.exists(gen_exe):
             gen_exe = os.path.join(problem_dir, f"gen{exe_ext}")
 
-        sol_exe = os.path.join(problem_dir, "solutions", f"sol{exe_ext}")
+        sol_exe = os.path.join(problem_dir, "solutions", f"{effective_sol_name}{exe_ext}")
         if not os.path.exists(sol_exe):
-            sol_exe = os.path.join(problem_dir, f"sol{exe_ext}")
+            sol_exe = os.path.join(problem_dir, f"{effective_sol_name}{exe_ext}")
 
-        brute_exe = os.path.join(problem_dir, "solutions", f"brute{exe_ext}")
+        brute_exe = os.path.join(problem_dir, "solutions", f"{effective_brute_name}{exe_ext}")
         if not os.path.exists(brute_exe):
-            brute_exe = os.path.join(problem_dir, f"brute{exe_ext}")
+            brute_exe = os.path.join(problem_dir, f"{effective_brute_name}{exe_ext}")
 
         if not os.path.exists(gen_exe):
             return ToolResult.fail("Generator not found. Run generator_build first.")
         if not os.path.exists(sol_exe):
-            return ToolResult.fail("sol not found. Run solution_build first.")
+            return ToolResult.fail(f"{effective_sol_name} not found. Run solution_build first.")
         if not os.path.exists(brute_exe):
-            return ToolResult.fail("brute not found. Run solution_build first.")
+            return ToolResult.fail(f"{effective_brute_name} not found. Run solution_build first.")
 
         # 可选的 validator
         val_exe = os.path.join(problem_dir, "files", f"val{exe_ext}")
@@ -141,20 +168,24 @@ class StressTestRunTool(Tool):
         brute_output = None
         validator_failed = False
 
+        # 统计信息收集
+        round_stats: list[dict] = []
+
         with tempfile.TemporaryDirectory(dir=problem_dir) as temp_dir:
             input_path = os.path.join(temp_dir, "input.txt")
 
             for i in range(1, trials + 1):
                 # 1. 生成输入数据
                 gen_result = await self._generate_input(
-                    gen_exe, input_path, i, seed=i, timeout=timeout, n_max=n_max, generator_args=generator_args
+                    gen_exe, input_path, i, seed=i, timeout=timeout, n_max=n_max,
+                    generator_args=generator_args, types=types,
                 )
                 if not gen_result["success"]:
                     error_detail = gen_result.get("error", "Unknown error")
                     if "timed out" in error_detail:
                         hint = "Generator may contain an infinite loop or be too slow. Try increasing the timeout parameter."
                     elif "no output" in error_detail:
-                        hint = "Check that the generator follows the protocol: gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max>"
+                        hint = "Check that the generator follows the protocol: gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max> [extra_args...]"
                     else:
                         hint = "Generator crashed unexpectedly. Check stderr for details."
                     return ToolResult.fail(
@@ -165,6 +196,7 @@ class StressTestRunTool(Tool):
                         stdout=gen_result.get("stdout", ""),
                         cmd_args=gen_result.get("cmd_args", []),
                         last_input=last_input,
+                        statistics=self._compute_summary(round_stats),
                     )
 
                 # 2. 验证输入（如果有 validator）
@@ -187,10 +219,11 @@ class StressTestRunTool(Tool):
                 sol_result = await run_binary(sol_exe, input_data, timeout=timeout)
                 if sol_result.timed_out or not sol_result.success:
                     return ToolResult.fail(
-                        f"sol failed at round {i}",
+                        f"{effective_sol_name} failed at round {i}",
                         round=i,
                         input_data=input_data,
                         stderr=sol_result.stderr,
+                        statistics=self._compute_summary(round_stats),
                     )
                 sol_output = sol_result.stdout
 
@@ -198,19 +231,30 @@ class StressTestRunTool(Tool):
                 brute_result = await run_binary(brute_exe, input_data, timeout=timeout)
                 if brute_result.timed_out:
                     return ToolResult.fail(
-                        f"brute timed out at round {i} (N may be too large)",
+                        f"{effective_brute_name} timed out at round {i} (N may be too large)",
                         round=i,
                         input_data=input_data,
                         suggestion="Try reducing n_max parameter",
+                        statistics=self._compute_summary(round_stats),
                     )
                 if not brute_result.success:
                     return ToolResult.fail(
-                        f"brute failed at round {i}",
+                        f"{effective_brute_name} failed at round {i}",
                         round=i,
                         input_data=input_data,
                         stderr=brute_result.stderr,
+                        statistics=self._compute_summary(round_stats),
                     )
                 brute_output = brute_result.stdout
+
+                # 收集统计信息
+                round_stats.append({
+                    "round": i,
+                    "sol_time_ms": sol_result.time_ms,
+                    "brute_time_ms": brute_result.time_ms,
+                    "input_size": len(input_data),
+                    "n_value": self._extract_n_value(input_data),
+                })
 
                 # 5. 比较输出
                 if sol_output.strip() != brute_output.strip():
@@ -226,6 +270,7 @@ class StressTestRunTool(Tool):
             brute_output,
             trials,
             effective_n_max,
+            round_stats,
         )
 
     async def _generate_input(
@@ -237,43 +282,37 @@ class StressTestRunTool(Tool):
         timeout: int,
         n_max: int = 100,
         generator_args: dict | None = None,
+        types: list[str] | None = None,
     ) -> dict:
-        """
-        生成输入数据。
-
-        Args:
-            gen_exe: generator 可执行文件路径
-            input_path: 输入文件保存路径
-            round_num: 当前轮次
-            seed: 随机种子
-            timeout: 超时时间（秒）
-            n_max: N 最大值（用于默认协议）
-            generator_args: Generator 完整参数（可选）
-
-        Returns:
-            dict: {"success": bool, "error": str | None}
-        """
+        """生成输入数据。"""
         try:
+            # 确定 type 参数
+            if types:
+                type_param = types[(round_num - 1) % len(types)]
+            elif generator_args:
+                type_param = generator_args.get("type", "2")
+            else:
+                type_param = "2"
+
             # 构建命令参数
+            # gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max> [extra_args...]
             if generator_args:
-                # 完整协议: gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max>
                 cmd_args = [
                     str(seed),
-                    generator_args.get("type", "2"),
+                    type_param,
                     str(generator_args.get("n_min", 1)),
                     str(generator_args.get("n_max", n_max)),
                     str(generator_args.get("t_min", 1)),
                     str(generator_args.get("t_max", 1)),
-                ]
+                ] + generator_args.get("extra_args", [])
             else:
-                # 默认使用完整协议，与 generator_run 和 problem_generate_tests 保持一致
                 cmd_args = [
                     str(seed),
-                    "2",           # type=random
-                    "1",           # n_min
-                    str(n_max),    # n_max 使用参数
-                    "1",           # t_min
-                    "1",           # t_max
+                    type_param,
+                    "1",
+                    str(n_max),
+                    "1",
+                    "1",
                 ]
 
             gen_result = await run_binary_with_args(
@@ -281,8 +320,6 @@ class StressTestRunTool(Tool):
                 cmd_args,
                 timeout=timeout,
             )
-            # Generator 可能因 testlib.h 优化问题崩溃，但输出仍有效
-            # 只要没有超时且有输出，就认为成功
             if gen_result.timed_out:
                 return {
                     "success": False,
@@ -318,6 +355,70 @@ class StressTestRunTool(Tool):
                 "seed": seed,
             }
 
+    def _extract_n_value(self, input_data: str) -> int | None:
+        """尝试从输入数据的第一行解析 N 值。"""
+        try:
+            first_line = input_data.strip().split("\n")[0]
+            # 尝试解析为整数（常见竞赛编程格式）
+            n = int(first_line.strip())
+            return n if n > 0 else None
+        except (ValueError, IndexError):
+            return None
+
+    def _compute_n_distribution(self, round_stats: list[dict]) -> dict[str, int]:
+        """计算 N 值分布。"""
+        buckets = {"1": 0, "2-10": 0, "11-50": 0, "51-100": 0, "101+": 0}
+        for stat in round_stats:
+            n = stat.get("n_value")
+            if n is None:
+                continue
+            if n == 1:
+                buckets["1"] += 1
+            elif n <= 10:
+                buckets["2-10"] += 1
+            elif n <= 50:
+                buckets["11-50"] += 1
+            elif n <= 100:
+                buckets["51-100"] += 1
+            else:
+                buckets["101+"] += 1
+        return {k: v for k, v in buckets.items() if v > 0}
+
+    def _compute_summary(self, round_stats: list[dict]) -> dict | None:
+        """计算统计摘要。"""
+        if not round_stats:
+            return None
+
+        sol_times = [s["sol_time_ms"] for s in round_stats]
+        brute_times = [s["brute_time_ms"] for s in round_stats]
+
+        summary = {
+            "rounds_completed": len(round_stats),
+            "sol_time": {
+                "min_ms": min(sol_times),
+                "max_ms": max(sol_times),
+                "avg_ms": sum(sol_times) // len(sol_times),
+                "total_ms": sum(sol_times),
+            },
+            "brute_time": {
+                "min_ms": min(brute_times),
+                "max_ms": max(brute_times),
+                "avg_ms": sum(brute_times) // len(brute_times),
+                "total_ms": sum(brute_times),
+            },
+            "n_distribution": self._compute_n_distribution(round_stats),
+            "slowest_round": max(round_stats, key=lambda s: s["sol_time_ms"]),
+        }
+
+        # 计算最大时间比
+        ratios = []
+        for s in round_stats:
+            bt = max(s["brute_time_ms"], 1)
+            ratios.append(s["sol_time_ms"] / bt)
+        summary["max_ratio"] = max(ratios)
+
+        return summary
+
     def _format_result(
         self,
         failed_round: int | None,
@@ -327,10 +428,11 @@ class StressTestRunTool(Tool):
         brute_output: str | None,
         total_rounds: int,
         effective_n_max: int = 100,
+        round_stats: list[dict] | None = None,
     ) -> ToolResult:
-        """
-        格式化测试结果。
-        """
+        """格式化测试结果。"""
+        statistics = self._compute_summary(round_stats or [])
+
         if failed_round:
             return ToolResult.fail(
                 f"Output mismatch at round {failed_round}"
@@ -342,11 +444,13 @@ class StressTestRunTool(Tool):
                 brute_output=brute_output,
                 completed_rounds=failed_round - 1,
                 total_rounds=total_rounds,
+                statistics=statistics,
             )
 
         return ToolResult.ok(
             completed_rounds=total_rounds,
             total_rounds=total_rounds,
             effective_n_max=effective_n_max,
+            statistics=statistics,
             message=f"All {total_rounds} rounds passed",
         )

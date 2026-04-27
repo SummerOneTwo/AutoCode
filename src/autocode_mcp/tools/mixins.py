@@ -6,10 +6,65 @@ Mixin 模块 - 提供代码复用的工具基类。
 
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass
 from typing import Literal
 
 from ..utils.compiler import CompileResult, RunResult, compile_cpp, run_binary
 from ..utils.resource_limit import get_resource_limit
+from .base import ToolResult
+
+
+@dataclass
+class ResolvedSource:
+    """解析后的源代码信息。"""
+
+    code: str
+    original_source_path: str | None  # 用户提供的源文件绝对路径
+    include_dir: str | None  # 源文件目录（用于 -I 编译选项）
+    from_source_path: bool  # True 表示通过 source_path 读取
+
+
+def resolve_source(
+    problem_dir: str,
+    code: str | None,
+    source_path: str | None,
+) -> tuple[ResolvedSource | None, ToolResult | None]:
+    """解析源代码来源：source_path 优先于 code。
+
+    Returns:
+        成功时返回 (ResolvedSource, None)，失败时返回 (None, ToolResult.fail(...))
+    """
+    original_source_path = None
+    include_dir = None
+    from_source_path = False
+
+    if source_path:
+        from_source_path = True
+        if not os.path.isabs(source_path):
+            source_path = os.path.join(problem_dir, source_path)
+        if not os.path.exists(source_path):
+            return None, ToolResult.fail(f"Source file not found: {source_path}")
+        try:
+            with open(source_path, encoding="utf-8") as f:
+                code = f.read()
+        except UnicodeDecodeError:
+            try:
+                with open(source_path, encoding="latin-1") as f:
+                    code = f.read()
+            except Exception as e:
+                return None, ToolResult.fail(f"Failed to read source file: {e}")
+        original_source_path = os.path.abspath(source_path)
+        include_dir = os.path.dirname(original_source_path)
+    elif code is None:
+        return None, ToolResult.fail("Either 'code' or 'source_path' must be provided")
+
+    return ResolvedSource(
+        code=code,
+        original_source_path=original_source_path,
+        include_dir=include_dir,
+        from_source_path=from_source_path,
+    ), None
 
 
 class BuildToolMixin:
