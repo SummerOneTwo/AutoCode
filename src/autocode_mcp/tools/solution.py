@@ -3,6 +3,7 @@ Solution 工具组 - 解法构建和运行。
 """
 
 import os
+import shutil
 from typing import Literal
 
 from ..utils.platform import get_exe_extension
@@ -97,11 +98,15 @@ class SolutionBuildTool(Tool, BuildToolMixin):
         exe_ext = get_exe_extension()
         canonical_path = os.path.join(solutions_dir, f"{effective_name}.cpp")
         binary_path = os.path.join(solutions_dir, f"{effective_name}{exe_ext}")
+        standard_source_path = os.path.join(solutions_dir, f"{solution_type}.cpp")
+        standard_binary_path = os.path.join(solutions_dir, f"{solution_type}{exe_ext}")
 
-        # 保存到标准位置（其他工具依赖此路径）
+        # 保存自定义命名文件，并保留 sol.cpp/brute.cpp 供打包和默认流程使用。
         try:
             with open(canonical_path, "w", encoding="utf-8") as f:
                 f.write(resolved.code)
+            if os.path.normcase(canonical_path) != os.path.normcase(standard_source_path):
+                shutil.copy2(canonical_path, standard_source_path)
         except Exception as e:
             return ToolResult.fail(f"Failed to save code: {str(e)}")
 
@@ -119,11 +124,18 @@ class SolutionBuildTool(Tool, BuildToolMixin):
             )
 
         binary_size = os.path.getsize(binary_path) if os.path.exists(binary_path) else 0
+        if os.path.normcase(binary_path) != os.path.normcase(standard_binary_path):
+            try:
+                shutil.copy2(binary_path, standard_binary_path)
+            except Exception as e:
+                return ToolResult.fail(f"Failed to save standard binary: {str(e)}")
 
         return ToolResult.ok(
             source_path=compile_source,
             canonical_path=canonical_path,
+            standard_source_path=standard_source_path,
             binary_path=binary_path,
+            standard_binary_path=standard_binary_path,
             binary_size=binary_size,
             compile_log=result.stderr,
             effective_name=effective_name,

@@ -324,6 +324,30 @@ async def test_problem_generate_tests_rejects_unsafe_output_dir():
         assert "output_dir must be inside problem_dir" in result.error
 
 
+@pytest.mark.asyncio
+async def test_problem_generate_tests_rejects_symlinked_output_dir():
+    """测试拒绝指向题目目录外部的符号链接输出目录。"""
+    tool = ProblemGenerateTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        problem_dir = os.path.join(tmpdir, "symlink_output")
+        outside_dir = os.path.join(tmpdir, "outside_tests")
+        link_dir = os.path.join(problem_dir, "tests_link")
+        os.makedirs(os.path.join(problem_dir, "files"))
+        os.makedirs(os.path.join(problem_dir, "solutions"))
+        os.makedirs(outside_dir)
+
+        try:
+            os.symlink(outside_dir, link_dir, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlink creation is not available")
+
+        result = await tool.execute(problem_dir=problem_dir, output_dir="tests_link")
+
+        assert not result.success
+        assert "output_dir must be inside problem_dir" in result.error
+
+
 def test_problem_generate_tests_clear_only_generated_files():
     """测试清理输出目录时只删除旧的 .in/.ans 文件。"""
     tool = ProblemGenerateTestsTool()
@@ -404,6 +428,23 @@ def test_problem_verify_tests_file_count_requires_contiguous_numeric_names():
 
         assert not result["passed"]
         assert result["missing_indices"] == [2]
+
+
+def test_problem_verify_tests_file_count_reports_large_gaps():
+    """测试跳到大编号时会报告完整缺失区间。"""
+    tool = ProblemVerifyTestsTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for name in ["01.in", "01.ans", "100.in", "100.ans"]:
+            with open(os.path.join(tmpdir, name), "w", encoding="utf-8") as f:
+                f.write("x\n")
+
+        result = tool._check_file_count(tmpdir)
+
+        assert not result["passed"]
+        assert result["missing_indices"][0] == 2
+        assert result["missing_indices"][-1] == 99
+        assert len(result["missing_indices"]) == 98
 
 
 @pytest.mark.asyncio

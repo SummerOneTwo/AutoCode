@@ -493,30 +493,36 @@ class ProblemGenerateTestsTool(Tool):
         output_dir: str | None,
     ) -> tuple[str | None, ToolResult | None]:
         """解析并校验测试输出目录，防止清理时误删题目文件或外部目录。"""
-        problem_root = os.path.abspath(problem_dir)
+        problem_root = os.path.realpath(problem_dir)
         raw_output_dir = output_dir or "tests"
         tests_dir = raw_output_dir
         if not os.path.isabs(tests_dir):
             tests_dir = os.path.join(problem_root, tests_dir)
         tests_dir = os.path.abspath(tests_dir)
+        resolved_tests_dir = os.path.realpath(tests_dir)
 
         try:
-            common = os.path.commonpath([problem_root, tests_dir])
+            common = os.path.commonpath([problem_root, resolved_tests_dir])
         except ValueError:
             common = ""
         if os.path.normcase(common) != os.path.normcase(problem_root):
             return None, ToolResult.fail("output_dir must be inside problem_dir")
 
-        if os.path.normcase(tests_dir) == os.path.normcase(problem_root):
+        if os.path.normcase(resolved_tests_dir) == os.path.normcase(problem_root):
             return None, ToolResult.fail("output_dir cannot be the problem_dir root")
 
         reserved_dirs = {"files", "solutions", "statements"}
         for reserved in reserved_dirs:
-            reserved_path = os.path.join(problem_root, reserved)
-            if os.path.normcase(os.path.commonpath([reserved_path, tests_dir])) == os.path.normcase(
-                reserved_path
-            ):
+            reserved_path = os.path.realpath(os.path.join(problem_root, reserved))
+            try:
+                reserved_common = os.path.commonpath([reserved_path, resolved_tests_dir])
+            except ValueError:
+                reserved_common = ""
+            if os.path.normcase(reserved_common) == os.path.normcase(reserved_path):
                 return None, ToolResult.fail(f"output_dir cannot be reserved directory: {reserved}")
+
+        if os.path.exists(tests_dir) and os.path.islink(tests_dir):
+            return None, ToolResult.fail(f"output_dir cannot be a symlink: {tests_dir}")
 
         if os.path.exists(tests_dir) and not os.path.isdir(tests_dir):
             return None, ToolResult.fail(f"output_dir exists and is not a directory: {tests_dir}")

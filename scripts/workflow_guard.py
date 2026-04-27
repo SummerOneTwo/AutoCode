@@ -136,7 +136,7 @@ def pre_tool(payload: dict[str, Any]) -> int:
         "checker_build": "必须先通过 stress_test_run（completed_rounds == total_rounds），再构建 checker。",
         "problem_validate": "必须先通过 stress_test_run（completed_rounds == total_rounds），再进行验证。",
         "problem_generate_tests": "必须先通过 problem_validate（验证通过），才能生成最终测试数据。",
-        "problem_pack_polygon": "必须先生成最终测试数据，并且生成数量 > 0，再进行打包。",
+        "problem_pack_polygon": "必须先生成最终测试数据并通过 problem_verify_tests(passed)，再进行打包。",
     }
 
     tool_input = payload.get("tool_input", {})
@@ -185,6 +185,7 @@ def pre_tool(payload: dict[str, Any]) -> int:
 
     if short_name == "problem_pack_polygon" and not (
         state["tests_generated"] and state.get("generated_test_count", 0) > 0
+        and state.get("tests_verified", False)
     ):
         deny(reasons["problem_pack_polygon"])
         return 0
@@ -207,6 +208,12 @@ def post_tool(payload: dict[str, Any]) -> int:
         state["statement_validated"] = data.get("statement_samples", {}).get("validated", False)
         state["sample_files_validated"] = data.get("sample_files", {}).get("validated", False)
         state["validation_passed"] = False
+        save_state(problem_dir, state)
+        return 0
+
+    if short_name == "problem_verify_tests" and not success:
+        state = load_state(problem_dir)
+        state["tests_verified"] = False
         save_state(problem_dir, state)
         return 0
 
@@ -245,6 +252,9 @@ def post_tool(payload: dict[str, Any]) -> int:
         generated_tests = data.get("generated_tests", [])
         state["tests_generated"] = bool(generated_tests)
         state["generated_test_count"] = len(generated_tests)
+        state["tests_verified"] = False
+    elif short_name == "problem_verify_tests":
+        state["tests_verified"] = bool(data.get("passed", False))
     elif short_name == "problem_pack_polygon":
         state["packaged"] = True
 

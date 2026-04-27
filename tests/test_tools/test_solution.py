@@ -278,6 +278,34 @@ async def test_solution_build():
 
 
 @pytest.mark.asyncio
+async def test_solution_build_custom_name_keeps_standard_files(monkeypatch):
+    """测试自定义命名构建时仍保留 sol.cpp/sol 可供默认流程使用。"""
+    tool = SolutionBuildTool()
+
+    async def fake_build(source_path, binary_path, compiler="g++", include_dirs=None):
+        with open(binary_path, "w", encoding="utf-8") as f:
+            f.write("binary")
+        return CompileResult(success=True, binary_path=binary_path)
+
+    monkeypatch.setattr(tool, "build", fake_build)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await tool.execute(
+            problem_dir=tmpdir,
+            solution_type="sol",
+            name="accepted",
+            code=SIMPLE_CPP,
+        )
+
+        assert result.success
+        assert os.path.exists(os.path.join(tmpdir, "solutions", "accepted.cpp"))
+        assert os.path.exists(os.path.join(tmpdir, "solutions", "sol.cpp"))
+        assert os.path.exists(result.data["binary_path"])
+        assert os.path.exists(result.data["standard_binary_path"])
+        assert result.data["effective_name"] == "accepted"
+
+
+@pytest.mark.asyncio
 async def test_solution_build_brute():
     """测试暴力解法构建。"""
     tool = SolutionBuildTool()

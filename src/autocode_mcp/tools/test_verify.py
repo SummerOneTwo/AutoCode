@@ -182,12 +182,13 @@ class ProblemVerifyTestsTool(Tool):
 
         non_numeric = [f for f in in_files if not Path(f).stem.isdigit()]
         numeric_indices = sorted(int(Path(f).stem) for f in in_files if Path(f).stem.isdigit())
-        expected_indices = list(range(1, len(numeric_indices) + 1))
+        numeric_index_set = set(numeric_indices)
+        expected_indices = list(range(1, max(numeric_indices) + 1)) if numeric_indices else []
         missing_indices = [
-            idx for idx in expected_indices if idx not in numeric_indices
-        ] if numeric_indices else []
+            idx for idx in expected_indices if idx not in numeric_index_set
+        ]
         duplicate_indices = sorted(
-            idx for idx in set(numeric_indices) if numeric_indices.count(idx) > 1
+            idx for idx in numeric_index_set if numeric_indices.count(idx) > 1
         )
 
         passed = (
