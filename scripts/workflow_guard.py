@@ -36,11 +36,12 @@ def state_file(problem_dir: str) -> Path:
 
 def infer_state(problem_dir: str) -> dict[str, Any]:
     root = Path(problem_dir)
+    solutions_dir = root / "solutions"
     return {
         "problem_dir": str(root),
         "created": root.exists() and (root / "files").exists() and (root / "solutions").exists(),
-        "sol_built": (root / "solutions" / "sol.cpp").exists() or any(root.glob("solutions/sol.*")),
-        "brute_built": (root / "solutions" / "brute.cpp").exists() or any(root.glob("solutions/brute.*")),
+        "sol_built": _has_solution(solutions_dir, "sol"),
+        "brute_built": _has_solution(solutions_dir, "brute"),
         "validator_ready": (root / "files" / "val.cpp").exists() or any(root.glob("files/val.*")),
         "validator_accuracy": None,
         "generator_built": (root / "files" / "gen.cpp").exists() or any(root.glob("files/gen.*")),
@@ -54,8 +55,23 @@ def infer_state(problem_dir: str) -> dict[str, Any]:
         "validation_passed": False,
         "tests_generated": any((root / "tests").glob("*.in")) if (root / "tests").exists() else False,
         "generated_test_count": len(list((root / "tests").glob("*.in"))) if (root / "tests").exists() else 0,
+        "tests_verified": False,
         "packaged": (root / "problem.xml").exists(),
     }
+
+
+def _has_solution(solutions_dir: Path, prefix: str) -> bool:
+    """检查 solutions/ 下是否有指定前缀的解法文件（支持自定义命名）。"""
+    if not solutions_dir.exists():
+        return False
+    # 精确匹配（如 sol.cpp, brute.cpp）
+    if (solutions_dir / f"{prefix}.cpp").exists():
+        return True
+    # 前缀匹配（如 brute_force.cpp）
+    for f in solutions_dir.iterdir():
+        if f.is_file() and f.stem.startswith(prefix) and f.suffix == ".cpp":
+            return True
+    return False
 
 
 def load_state(problem_dir: str) -> dict[str, Any]:
@@ -244,7 +260,8 @@ def session_start() -> int:
         "stress_test_run(completed_rounds == total_rounds) -> "
         "checker_build if needed (accuracy >= 0.9) -> "
         "problem_validate(validation_passed) -> "
-        "problem_generate_tests(generated_test_count > 0) -> problem_pack_polygon. "
+        "problem_generate_tests(generated_test_count > 0) -> "
+        "problem_verify_tests(passed) -> problem_pack_polygon. "
         "If a hook blocks a step, complete the missing prerequisite instead of retrying blindly."
     )
     print(

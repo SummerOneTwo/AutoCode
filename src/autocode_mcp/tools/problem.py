@@ -158,7 +158,7 @@ class ProblemGenerateTestsTool(Tool):
                 },
                 "constraints": {
                     "type": "object",
-                    "description": "题目约束条件，用于生成极限数据",
+                    "description": "题目约束条件。不提供 test_configs 时，系统将根据 constraints 自动生成覆盖边界、随机、极限、TLE 诱导等策略的测试配置（smart mode）",
                     "properties": {
                         "n_max": {
                             "type": "integer",
@@ -194,9 +194,22 @@ class ProblemGenerateTestsTool(Tool):
                             "n_max": {"type": "integer", "description": "N 最大值"},
                             "t_min": {"type": "integer", "description": "T 最小值"},
                             "t_max": {"type": "integer", "description": "T 最大值"},
+                            "extra_args": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "附加命令行参数，追加在标准 6 参数之后传递给 generator",
+                            },
                         },
                         "required": ["type", "n_min", "n_max", "t_min", "t_max"],
                     },
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "测试数据输出目录路径，默认为 problem_dir/tests。必须位于 problem_dir 下，且不能是题目根目录或 files/solutions/statements 等保留目录",
+                },
+                "sol_name": {
+                    "type": "string",
+                    "description": "标准解法文件名（不含扩展名），默认 'sol'",
                 },
                 "enable_dedup": {
                     "type": "boolean",
@@ -229,6 +242,8 @@ class ProblemGenerateTestsTool(Tool):
         timeout: int = 60,
         constraints: dict | None = None,
         test_configs: list[dict] | None = None,
+        output_dir: str | None = None,
+        sol_name: str | None = None,
         enable_dedup: bool = True,
         enable_validator_filter: bool = True,
         enable_balance: bool = True,
@@ -296,33 +311,38 @@ class ProblemGenerateTestsTool(Tool):
                     )
 
         exe_ext = get_exe_extension()
+        effective_sol_name = sol_name or "sol"
 
         # 检查必要文件
         gen_exe = os.path.join(problem_dir, "files", f"gen{exe_ext}")
-        sol_exe = os.path.join(problem_dir, "solutions", f"sol{exe_ext}")
+        sol_exe = os.path.join(problem_dir, "solutions", f"{effective_sol_name}{exe_ext}")
         val_exe = os.path.join(problem_dir, "files", f"val{exe_ext}")
-        tests_dir = os.path.join(problem_dir, "tests")
+
+        # 解析输出目录
+        tests_dir, tests_dir_error = self._resolve_tests_dir(problem_dir, output_dir)
+        if tests_dir_error:
+            return tests_dir_error
 
         # 如果 files 目录下没有，检查根目录
         if not os.path.exists(gen_exe):
             gen_exe = os.path.join(problem_dir, f"gen{exe_ext}")
         if not os.path.exists(sol_exe):
-            sol_exe = os.path.join(problem_dir, f"sol{exe_ext}")
+            sol_exe = os.path.join(problem_dir, f"{effective_sol_name}{exe_ext}")
         if not os.path.exists(val_exe):
             val_exe = os.path.join(problem_dir, f"val{exe_ext}")
 
         if not os.path.exists(gen_exe):
             return ToolResult.fail("Generator not found. Run generator_build first.")
         if not os.path.exists(sol_exe):
-            return ToolResult.fail("sol not found. Run solution_build first.")
+            return ToolResult.fail(f"{effective_sol_name} not found. Run solution_build first.")
 
         # Validator 是否可用
         validator_available = enable_validator_filter and os.path.exists(val_exe)
 
-        # 创建/清空 tests 目录
-        if os.path.exists(tests_dir):
-            shutil.rmtree(tests_dir)
-        os.makedirs(tests_dir)
+        # 创建/清空 tests 目录。只移除旧的测试数据，避免误删用户源码或其他文件。
+        clear_error = self._clear_generated_tests(tests_dir)
+        if clear_error:
+            return clear_error
 
         # 获取测试配置
         if test_configs:
@@ -334,6 +354,7 @@ class ProblemGenerateTestsTool(Tool):
                     str(c["n_max"]),
                     str(c["t_min"]),
                     str(c["t_max"]),
+                    [str(a) for a in c.get("extra_args", [])],
                 )
                 for c in test_configs
             ]
@@ -354,7 +375,7 @@ class ProblemGenerateTestsTool(Tool):
             cfg_idx = (seed - 1) % len(test_configs_list)
             test_cfg = test_configs_list[cfg_idx]
 
-            seed_offset, type_param, n_min, n_max, t_min, t_max = test_cfg
+            seed_offset, type_param, n_min, n_max, t_min, t_max, extra_args = test_cfg
             cmd_args = [
                 str(seed + int(seed_offset)),
                 type_param,
@@ -362,7 +383,7 @@ class ProblemGenerateTestsTool(Tool):
                 str(n_max),
                 str(t_min),
                 str(t_max),
-            ]
+            ] + extra_args
 
             try:
                 # 生成输入
@@ -455,6 +476,7 @@ class ProblemGenerateTestsTool(Tool):
                 validator_filter_enabled=validator_available,
                 balance_enabled=enable_balance,
                 candidates_generated=len(candidates),
+                sol_name=effective_sol_name,
                 message=f"Generated {len(generated_tests)} test cases (from {len(candidates)} candidates)",
             )
         else:
@@ -462,7 +484,55 @@ class ProblemGenerateTestsTool(Tool):
                 f"Partial generation: {len(generated_tests)}/{test_count}",
                 generated_tests=generated_tests,
                 errors=errors,
+                sol_name=effective_sol_name,
             )
+
+    def _resolve_tests_dir(
+        self,
+        problem_dir: str,
+        output_dir: str | None,
+    ) -> tuple[str | None, ToolResult | None]:
+        """解析并校验测试输出目录，防止清理时误删题目文件或外部目录。"""
+        problem_root = os.path.abspath(problem_dir)
+        raw_output_dir = output_dir or "tests"
+        tests_dir = raw_output_dir
+        if not os.path.isabs(tests_dir):
+            tests_dir = os.path.join(problem_root, tests_dir)
+        tests_dir = os.path.abspath(tests_dir)
+
+        try:
+            common = os.path.commonpath([problem_root, tests_dir])
+        except ValueError:
+            common = ""
+        if os.path.normcase(common) != os.path.normcase(problem_root):
+            return None, ToolResult.fail("output_dir must be inside problem_dir")
+
+        if os.path.normcase(tests_dir) == os.path.normcase(problem_root):
+            return None, ToolResult.fail("output_dir cannot be the problem_dir root")
+
+        reserved_dirs = {"files", "solutions", "statements"}
+        for reserved in reserved_dirs:
+            reserved_path = os.path.join(problem_root, reserved)
+            if os.path.normcase(os.path.commonpath([reserved_path, tests_dir])) == os.path.normcase(
+                reserved_path
+            ):
+                return None, ToolResult.fail(f"output_dir cannot be reserved directory: {reserved}")
+
+        if os.path.exists(tests_dir) and not os.path.isdir(tests_dir):
+            return None, ToolResult.fail(f"output_dir exists and is not a directory: {tests_dir}")
+
+        return tests_dir, None
+
+    def _clear_generated_tests(self, tests_dir: str) -> ToolResult | None:
+        """创建测试目录并清理旧的 .in/.ans 文件。"""
+        os.makedirs(tests_dir, exist_ok=True)
+        for filename in os.listdir(tests_dir):
+            if not (filename.endswith(".in") or filename.endswith(".ans")):
+                continue
+            path = os.path.join(tests_dir, filename)
+            if os.path.isfile(path):
+                os.remove(path)
+        return None
 
     def _balance_and_sample(
         self, candidates: list[CandidateTest], target_count: int
@@ -505,14 +575,14 @@ class ProblemGenerateTestsTool(Tool):
 
     def _get_default_configs(
         self, constraints: dict | None = None
-    ) -> list[tuple[str, str, str, str, str, str]]:
+    ) -> list[tuple[str, str, str, str, str, str, list[str]]]:
         """获取默认测试配置。
 
         Args:
             constraints: 题目约束条件，包含 n_max, t_max, sum_n_max 等
 
         Returns:
-            配置列表，每项为 (seed_offset, type, n_min, n_max, t_min, t_max)
+            配置列表，每项为 (seed_offset, type, n_min, n_max, t_min, t_max, extra_args)
         """
         # 从约束中获取极限值
         n_limit = constraints.get("n_max", 100000) if constraints else 100000
@@ -524,17 +594,17 @@ class ProblemGenerateTestsTool(Tool):
         # 1. 边界情况 (type=1 tiny) - 最小值和极小值
         configs.extend(
             [
-                ("0", "1", "1", "1", "1", "1"),  # N=1, T=1
-                ("1", "1", "1", "1", str(t_limit), str(t_limit)),  # N=1, T=max
-                ("2", "1", "2", "2", "1", "1"),  # N=2
+                ("0", "1", "1", "1", "1", "1", []),  # N=1, T=1
+                ("1", "1", "1", "1", str(t_limit), str(t_limit), []),  # N=1, T=max
+                ("2", "1", "2", "2", "1", "1", []),  # N=2
             ]
         )
 
         # 2. 小数据随机 (type=2 random)
         configs.extend(
             [
-                ("3", "2", "1", "10", "1", str(min(3, t_limit))),
-                ("4", "2", "10", "100", "1", str(min(3, t_limit))),
+                ("3", "2", "1", "10", "1", str(min(3, t_limit)), []),
+                ("4", "2", "10", "100", "1", str(min(3, t_limit)), []),
             ]
         )
 
@@ -542,8 +612,8 @@ class ProblemGenerateTestsTool(Tool):
         mid_n = n_limit // 2
         configs.extend(
             [
-                ("5", "2", "100", str(mid_n // 10), "1", str(min(3, t_limit))),
-                ("6", "2", str(mid_n // 10), str(mid_n), "1", str(min(2, t_limit))),
+                ("5", "2", "100", str(mid_n // 10), "1", str(min(3, t_limit)), []),
+                ("6", "2", str(mid_n // 10), str(mid_n), "1", str(min(2, t_limit)), []),
             ]
         )
 
@@ -551,17 +621,17 @@ class ProblemGenerateTestsTool(Tool):
         if n_limit >= 10000:
             configs.extend(
                 [
-                    ("7", "2", str(mid_n), str(n_limit), "1", "1"),
-                    ("8", "2", str(int(n_limit * 0.8)), str(n_limit), "1", "1"),
+                    ("7", "2", str(mid_n), str(n_limit), "1", "1", []),
+                    ("8", "2", str(int(n_limit * 0.8)), str(n_limit), "1", "1", []),
                 ]
             )
 
         # 5. 极限数据 (type=3 extreme) - 接近上限
         configs.extend(
             [
-                ("9", "3", str(n_limit), str(n_limit), "1", "1"),  # N=max
-                ("10", "3", str(n_limit - 1), str(n_limit), "1", "1"),  # N=max-1
-                ("11", "3", str(int(n_limit * 0.99)), str(n_limit), "1", "1"),  # 接近极限
+                ("9", "3", str(n_limit), str(n_limit), "1", "1", []),  # N=max
+                ("10", "3", str(n_limit - 1), str(n_limit), "1", "1", []),  # N=max-1
+                ("11", "3", str(int(n_limit * 0.99)), str(n_limit), "1", "1", []),  # 接近极限
             ]
         )
 
@@ -570,15 +640,15 @@ class ProblemGenerateTestsTool(Tool):
             # T=max, N 根据sum约束调整
             n_per_test = min(n_limit, sum_n_limit // t_limit) if sum_n_limit else n_limit
             configs.append(
-                ("12", "3", str(max(1, n_per_test // 2)), str(n_per_test), str(t_limit), str(t_limit))
+                ("12", "3", str(max(1, n_per_test // 2)), str(n_per_test), str(t_limit), str(t_limit), [])
             )
 
         # 7. TLE 诱导数据 (type=4)
         if n_limit >= 100:
             configs.extend(
                 [
-                    ("13", "4", str(n_limit), str(n_limit), "1", "1"),
-                    ("14", "4", str(int(n_limit * 0.9)), str(n_limit), "1", "1"),
+                    ("13", "4", str(n_limit), str(n_limit), "1", "1", []),
+                    ("14", "4", str(int(n_limit * 0.9)), str(n_limit), "1", "1", []),
                 ]
             )
 

@@ -7,7 +7,7 @@ from typing import Literal
 
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
-from .mixins import BuildToolMixin, RunToolMixin
+from .mixins import BuildToolMixin, RunToolMixin, resolve_source
 
 
 class SolutionBuildTool(Tool, BuildToolMixin):
@@ -47,6 +47,10 @@ class SolutionBuildTool(Tool, BuildToolMixin):
                     "enum": ["sol", "brute"],
                     "description": "解法类型：sol（标准解法）或 brute（暴力解法）",
                 },
+                "name": {
+                    "type": "string",
+                    "description": "自定义文件名（不含扩展名），默认使用 solution_type。例如 'brute_force' 替代 'brute'",
+                },
                 "code": {
                     "type": "string",
                     "description": "C++ 源代码（与 source_path 二选一）",
@@ -72,69 +76,57 @@ class SolutionBuildTool(Tool, BuildToolMixin):
         self,
         problem_dir: str,
         solution_type: Literal["sol", "brute"],
+        name: str | None = None,
         code: str | None = None,
         source_path: str | None = None,
         compiler: str = "g++",
     ) -> ToolResult:
         """执行解法构建。"""
-        # 解析源代码：source_path 优先于 code
-        source_dir = None
-        if source_path:
-            if not os.path.isabs(source_path):
-                source_path = os.path.join(problem_dir, source_path)
-            if not os.path.exists(source_path):
-                return ToolResult.fail(f"Source file not found: {source_path}")
-            try:
-                with open(source_path, encoding="utf-8") as f:
-                    code = f.read()
-            except UnicodeDecodeError:
-                try:
-                    with open(source_path, encoding="latin-1") as f:
-                        code = f.read()
-                except Exception as e:
-                    return ToolResult.fail(f"Failed to read source file: {e}")
-            source_dir = os.path.dirname(os.path.abspath(source_path))
-        elif code is None:
-            return ToolResult.fail("Either 'code' or 'source_path' must be provided")
+        resolved, err = resolve_source(problem_dir, code, source_path)
+        if resolved is None:
+            return err
 
         # 确保目录存在
         os.makedirs(problem_dir, exist_ok=True)
-
-        # 保存到 solutions/ 子目录
         solutions_dir = os.path.join(problem_dir, "solutions")
         os.makedirs(solutions_dir, exist_ok=True)
 
         # 确定文件名
-        source_name = f"{solution_type}.cpp"
-        source_path = os.path.join(solutions_dir, source_name)
+        effective_name = name or solution_type
+        exe_ext = get_exe_extension()
+        canonical_path = os.path.join(solutions_dir, f"{effective_name}.cpp")
+        binary_path = os.path.join(solutions_dir, f"{effective_name}{exe_ext}")
 
-        # 保存代码
+        # 保存到标准位置（其他工具依赖此路径）
         try:
-            with open(source_path, "w", encoding="utf-8") as f:
-                f.write(code)
+            with open(canonical_path, "w", encoding="utf-8") as f:
+                f.write(resolved.code)
         except Exception as e:
             return ToolResult.fail(f"Failed to save code: {str(e)}")
 
-        # 编译
-        exe_ext = get_exe_extension()
-        binary_name = f"{solution_type}{exe_ext}"
-        binary_path = os.path.join(solutions_dir, binary_name)
-
-        include_dirs = [source_dir] if source_dir else None
-        result = await self.build(source_path, binary_path, compiler=compiler, include_dirs=include_dirs)
+        # 编译：source_path 时从原始文件编译，否则从标准位置编译
+        compile_source = resolved.original_source_path or canonical_path
+        include_dirs = [resolved.include_dir] if resolved.include_dir else None
+        result = await self.build(compile_source, binary_path, compiler=compiler, include_dirs=include_dirs)
 
         if not result.success:
             return ToolResult.fail(
                 f"Compilation failed: {result.error}",
-                source_path=source_path,
+                source_path=compile_source,
+                canonical_path=canonical_path,
                 compile_log=result.stderr,
             )
 
+        binary_size = os.path.getsize(binary_path) if os.path.exists(binary_path) else 0
+
         return ToolResult.ok(
-            source_path=source_path,
+            source_path=compile_source,
+            canonical_path=canonical_path,
             binary_path=binary_path,
+            binary_size=binary_size,
             compile_log=result.stderr,
-            message=f"Successfully built {solution_type}",
+            effective_name=effective_name,
+            message=f"Successfully built {effective_name}",
         )
 
 
@@ -174,6 +166,10 @@ class SolutionRunTool(Tool, RunToolMixin):
                     "enum": ["sol", "brute"],
                     "description": "解法类型：sol 或 brute",
                 },
+                "name": {
+                    "type": "string",
+                    "description": "自定义文件名（不含扩展名），默认使用 solution_type",
+                },
                 "input_data": {
                     "type": "string",
                     "description": "输入数据",
@@ -192,20 +188,21 @@ class SolutionRunTool(Tool, RunToolMixin):
         problem_dir: str,
         solution_type: Literal["sol", "brute"],
         input_data: str,
+        name: str | None = None,
         timeout: int = 30,
     ) -> ToolResult:
         """执行解法运行。"""
-        # 确定二进制文件路径 - 优先查找 solutions/ 子目录
+        effective_name = name or solution_type
         exe_ext = get_exe_extension()
-        binary_path = os.path.join(problem_dir, "solutions", f"{solution_type}{exe_ext}")
+        binary_path = os.path.join(problem_dir, "solutions", f"{effective_name}{exe_ext}")
 
         # 如果子目录没有，检查根目录（向后兼容）
         if not os.path.exists(binary_path):
-            binary_path = os.path.join(problem_dir, f"{solution_type}{exe_ext}")
+            binary_path = os.path.join(problem_dir, f"{effective_name}{exe_ext}")
 
         if not os.path.exists(binary_path):
             return ToolResult.fail(
-                f"Binary not found: {solution_type}. Please run solution_build first."
+                f"Binary not found: {effective_name}. Please run solution_build first."
             )
 
         # 运行

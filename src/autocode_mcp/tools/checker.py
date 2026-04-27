@@ -11,7 +11,7 @@ import os
 from ..utils.compiler import run_binary_with_args
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
-from .mixins import BuildToolMixin
+from .mixins import BuildToolMixin, resolve_source
 
 
 class CheckerBuildTool(Tool, BuildToolMixin):
@@ -91,58 +91,44 @@ class CheckerBuildTool(Tool, BuildToolMixin):
         compiler: str = "g++",
     ) -> ToolResult:
         """执行 Checker 构建。"""
-        # 解析源代码：source_path 优先于 code
-        source_dir = None
-        if source_path:
-            if not os.path.isabs(source_path):
-                source_path = os.path.join(problem_dir, source_path)
-            if not os.path.exists(source_path):
-                return ToolResult.fail(f"Source file not found: {source_path}")
-            try:
-                with open(source_path, encoding="utf-8") as f:
-                    code = f.read()
-            except UnicodeDecodeError:
-                try:
-                    with open(source_path, encoding="latin-1") as f:
-                        code = f.read()
-                except Exception as e:
-                    return ToolResult.fail(f"Failed to read source file: {e}")
-            source_dir = os.path.dirname(os.path.abspath(source_path))
-        elif code is None:
-            return ToolResult.fail("Either 'code' or 'source_path' must be provided")
+        resolved, err = resolve_source(problem_dir, code, source_path)
+        if resolved is None:
+            return err
 
         os.makedirs(problem_dir, exist_ok=True)
-
-        # 保存到 files/ 子目录
         files_dir = os.path.join(problem_dir, "files")
         os.makedirs(files_dir, exist_ok=True)
 
-        # 保存代码
-        source_path = os.path.join(files_dir, "checker.cpp")
+        canonical_path = os.path.join(files_dir, "checker.cpp")
         try:
-            with open(source_path, "w", encoding="utf-8") as f:
-                f.write(code)
+            with open(canonical_path, "w", encoding="utf-8") as f:
+                f.write(resolved.code)
         except Exception as e:
             return ToolResult.fail(f"Failed to save code: {str(e)}")
 
-        # 编译
         binary_path = os.path.join(files_dir, f"checker{get_exe_extension()}")
 
-        include_dirs = [source_dir] if source_dir else None
-        compile_result = await self.build(source_path, binary_path, compiler=compiler, include_dirs=include_dirs)
+        compile_source = resolved.original_source_path or canonical_path
+        include_dirs = [resolved.include_dir] if resolved.include_dir else None
+        compile_result = await self.build(compile_source, binary_path, compiler=compiler, include_dirs=include_dirs)
 
         if not compile_result.success:
             return ToolResult.fail(
                 f"Compilation failed: {compile_result.error}",
-                source_path=source_path,
+                source_path=compile_source,
+                canonical_path=canonical_path,
                 compile_log=compile_result.stderr,
             )
+
+        binary_size = os.path.getsize(binary_path) if os.path.exists(binary_path) else 0
 
         # 如果没有测试场景，直接返回成功
         if not test_scenarios:
             return ToolResult.ok(
-                source_path=source_path,
+                source_path=compile_source,
+                canonical_path=canonical_path,
                 binary_path=binary_path,
+                binary_size=binary_size,
                 compile_log=compile_result.stderr,
                 message="Checker built successfully (no test scenarios provided)",
             )
@@ -214,8 +200,10 @@ class CheckerBuildTool(Tool, BuildToolMixin):
         accuracy = correct_count / total if total > 0 else 0
 
         return ToolResult.ok(
-            source_path=source_path,
+            source_path=compile_source,
+            canonical_path=canonical_path,
             binary_path=binary_path,
+            binary_size=binary_size,
             compile_log=compile_result.stderr,
             test_results=test_results,
             correct_count=correct_count,

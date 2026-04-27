@@ -66,6 +66,7 @@ AutoCode/
 | stress_test_run | 压力测试 |
 | problem_create | 初始化题目 |
 | problem_generate_tests | 生成测试数据 |
+| problem_verify_tests | 验证测试数据质量 |
 | problem_validate | 验证题面样例 |
 | problem_pack_polygon | 打包为 Polygon 格式 |
 
@@ -102,7 +103,8 @@ AutoCode/
 6. 运行压力测试 (`stress_test_run`, completed_rounds == total_rounds)
 7. 按需构建检查器 (`checker_build`, accuracy >= 0.9)
 8. 生成测试数据 (`problem_generate_tests`, generated_test_count > 0)
-9. 打包 Polygon (`problem_pack_polygon`)
+9. 验证测试数据 (`problem_verify_tests`, passed)
+10. 打包 Polygon (`problem_pack_polygon`)
 
 该顺序会被 [hooks/hooks.json](/c:/userProgram/program/AutoCode/hooks/hooks.json) 和 [scripts/workflow_guard.py](/c:/userProgram/program/AutoCode/scripts/workflow_guard.py) 实际强制执行。
 

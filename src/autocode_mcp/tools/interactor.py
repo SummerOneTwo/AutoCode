@@ -12,6 +12,7 @@ import os
 from ..utils.compiler import compile_cpp
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
+from .mixins import resolve_source
 
 
 class InteractorBuildTool(Tool):
@@ -84,58 +85,44 @@ class InteractorBuildTool(Tool):
         compiler: str = "g++",
     ) -> ToolResult:
         """执行 Interactor 构建。"""
-        # 解析源代码：source_path 优先于 code
-        source_dir = None
-        if source_path:
-            if not os.path.isabs(source_path):
-                source_path = os.path.join(problem_dir, source_path)
-            if not os.path.exists(source_path):
-                return ToolResult.fail(f"Source file not found: {source_path}")
-            try:
-                with open(source_path, encoding="utf-8") as f:
-                    code = f.read()
-            except UnicodeDecodeError:
-                try:
-                    with open(source_path, encoding="latin-1") as f:
-                        code = f.read()
-                except Exception as e:
-                    return ToolResult.fail(f"Failed to read source file: {e}")
-            source_dir = os.path.dirname(os.path.abspath(source_path))
-        elif code is None:
-            return ToolResult.fail("Either 'code' or 'source_path' must be provided")
+        resolved, err = resolve_source(problem_dir, code, source_path)
+        if resolved is None:
+            return err
 
         os.makedirs(problem_dir, exist_ok=True)
-
-        # 保存到 files/ 子目录
         files_dir = os.path.join(problem_dir, "files")
         os.makedirs(files_dir, exist_ok=True)
 
-        # 保存代码
-        source_path = os.path.join(files_dir, "interactor.cpp")
+        canonical_path = os.path.join(files_dir, "interactor.cpp")
         try:
-            with open(source_path, "w", encoding="utf-8") as f:
-                f.write(code)
+            with open(canonical_path, "w", encoding="utf-8") as f:
+                f.write(resolved.code)
         except Exception as e:
             return ToolResult.fail(f"Failed to save code: {str(e)}")
 
-        # 编译
         binary_path = os.path.join(files_dir, f"interactor{get_exe_extension()}")
 
-        include_dirs = [source_dir] if source_dir else None
-        compile_result = await compile_cpp(source_path, binary_path, compiler=compiler, include_dirs=include_dirs)
+        compile_source = resolved.original_source_path or canonical_path
+        include_dirs = [resolved.include_dir] if resolved.include_dir else None
+        compile_result = await compile_cpp(compile_source, binary_path, compiler=compiler, include_dirs=include_dirs)
 
         if not compile_result.success:
             return ToolResult.fail(
                 f"Compilation failed: {compile_result.error}",
-                source_path=source_path,
+                source_path=compile_source,
+                canonical_path=canonical_path,
                 compile_log=compile_result.stderr,
             )
+
+        binary_size = os.path.getsize(binary_path) if os.path.exists(binary_path) else 0
 
         # 如果没有提供参考解和变异解，直接返回成功（但 pass_rate 为 0）
         if not reference_solution_path and not mutant_solutions:
             return ToolResult.ok(
-                source_path=source_path,
+                source_path=compile_source,
+                canonical_path=canonical_path,
                 binary_path=binary_path,
+                binary_size=binary_size,
                 compile_log=compile_result.stderr,
                 pass_rate=0.0,
                 fail_rate=0.0,
@@ -155,7 +142,8 @@ class InteractorBuildTool(Tool):
             if not os.path.exists(reference_solution_path):
                 return ToolResult.fail(
                     f"Reference solution not found: {reference_solution_path}",
-                    source_path=source_path,
+                    source_path=compile_source,
+                    canonical_path=canonical_path,
                     binary_path=binary_path,
                 )
             pass_total = 1
@@ -186,8 +174,10 @@ class InteractorBuildTool(Tool):
         fail_rate = fail_count / fail_total if fail_total > 0 else 0.0
 
         return ToolResult.ok(
-            source_path=source_path,
+            source_path=compile_source,
+            canonical_path=canonical_path,
             binary_path=binary_path,
+            binary_size=binary_size,
             compile_log=compile_result.stderr,
             pass_rate=pass_rate,
             fail_rate=fail_rate,

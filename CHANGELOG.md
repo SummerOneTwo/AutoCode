@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-27
+
+### Features
+
+- **source_path 直接编译**: 当使用 `source_path` 参数时，直接从原始文件编译，不再覆盖到标准位置。标准位置仍保留副本以供其他工具使用。所有构建工具返回 `canonical_path`（标准位置副本）和 `source_path`（实际编译源）。
+- **resolve_source() 公共函数**: 提取 5 个构建工具中的源码解析逻辑到 `mixins.py` 的 `resolve_source()` 函数和 `ResolvedSource` 数据类，消除约 100 行重复代码。
+- **name 参数**: `solution_build` 和 `solution_run` 新增 `name` 参数，支持自定义文件名（如 `name="brute_force"` 替代默认 `brute`）。
+- **sol_name / brute_name**: `stress_test_run` 新增 `sol_name` 和 `brute_name` 参数，支持查找自定义命名的解法二进制文件。
+- **output_dir 参数**: `problem_generate_tests` 新增 `output_dir` 参数，可指定测试数据输出目录（默认 `problem_dir/tests`）。
+- **extra_args 参数**: `stress_test_run`、`generator_run`、`problem_generate_tests` 的 `test_configs` 新增 `extra_args` 参数，支持传递自定义命令行参数给 generator。协议扩展为 `gen.exe <seed> <type> <n_min> <n_max> <t_min> <t_max> [extra_args...]`。
+- **types 参数**: `stress_test_run` 新增 `types` 参数，支持在对拍中循环使用多种生成策略（如 `["1","2","3","4"]`）。
+- **problem_verify_tests 工具**: 新增测试数据验证工具，检查文件配对、答案一致性（重新运行 sol）、validator 验证、无空文件等。
+- **stress_test_run 统计信息**: 对拍通过/失败时返回详细统计，包括 sol/brute 运行时间分布、N 值分布、最慢轮次等。
+- **构建结果透明度**: 所有构建工具返回 `binary_size` 和 `canonical_path`，`source_path` 返回实际编译源文件路径。
+
+### Improvements
+
+- **smart mode 文档**: `problem_generate_tests` 的 `constraints` 参数说明更明确，返回 `effective_test_configs` 展示实际使用的配置。
+- **workflow_guard 自定义命名**: `infer_state()` 支持自定义解法文件名（前缀匹配），新增 `tests_verified` 状态字段。
+- **工作流步骤更新**: 新增 `problem_verify_tests(passed)` 步骤，位于 `problem_generate_tests` 和 `problem_pack_polygon` 之间。
+
 ## [0.6.0] - 2026-04-25
 
 ### Features
