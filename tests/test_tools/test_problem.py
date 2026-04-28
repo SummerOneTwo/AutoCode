@@ -673,6 +673,22 @@ def test_balance_and_sample_at_least_half_extreme_or_tle():
     assert sum(1 for x in out11 if x.type_param in ("3", "4")) >= 6
 
 
+def test_balance_and_sample_keeps_duplicates_when_dedup_disabled():
+    """采样函数不应按 signature 强制去重（由 enable_dedup 控制前置候选）。"""
+    tool = ProblemGenerateTestsTool()
+
+    dup1 = CandidateTest("in-a", "out", "3", "same")
+    dup2 = CandidateTest("in-b", "out", "3", "same")
+    dup3 = CandidateTest("in-c", "out", "2", "same")
+    dup4 = CandidateTest("in-d", "out", "1", "same")
+    candidates = [dup1, dup2, dup3, dup4]
+
+    out = tool._balance_and_sample(candidates, 4, balance_remainder=False)
+    assert len(out) == 4
+    assert out.count(dup1) == 1
+    assert out.count(dup2) == 1
+
+
 @pytest.mark.asyncio
 async def test_problem_generate_tests_balance():
     """测试平衡分布功能。"""

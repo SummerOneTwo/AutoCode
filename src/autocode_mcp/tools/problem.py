@@ -230,7 +230,7 @@ class ProblemGenerateTestsTool(Tool):
                 },
                 "enable_balance": {
                     "type": "boolean",
-                    "description": "启用平衡分布：在已满足「至少一半为 extreme/tle」后，将剩余名额在各非极限类型间尽量均衡分配；关闭时剩余名额按确定性签名顺序填充",
+                    "description": "启用平衡分布：在已满足「至少一半为 extreme/tle」后，将剩余名额在各非极限类型间尽量均衡分配；关闭时剩余名额按确定性的 (type_param, signature) 顺序填充",
                     "default": True,
                 },
                 "oversample_ratio": {
@@ -604,17 +604,18 @@ class ProblemGenerateTestsTool(Tool):
         )
 
         result: list[CandidateTest] = []
-        used_sig: set[str] = set()
+        selected_ids: set[int] = set()
 
         for c in extreme_pool:
             if len(result) >= need_limit:
                 break
-            if c.signature in used_sig:
+            cid = id(c)
+            if cid in selected_ids:
                 continue
             result.append(c)
-            used_sig.add(c.signature)
+            selected_ids.add(cid)
 
-        remaining = [c for c in candidates if c.signature not in used_sig]
+        remaining = [c for c in candidates if id(c) not in selected_ids]
         need_more = target_count - len(result)
         if need_more <= 0:
             return result[:target_count]
@@ -637,10 +638,11 @@ class ProblemGenerateTestsTool(Tool):
             for i, type_param in enumerate(type_order):
                 count = base_count + (1 if i < rem else 0)
                 for c in by_type[type_param][:count]:
-                    if c.signature in used_sig:
+                    cid = id(c)
+                    if cid in selected_ids:
                         continue
                     result.append(c)
-                    used_sig.add(c.signature)
+                    selected_ids.add(cid)
                     if len(result) >= target_count:
                         break
                 if len(result) >= target_count:
@@ -650,18 +652,20 @@ class ProblemGenerateTestsTool(Tool):
                 for c in sorted(remaining, key=lambda c: (c.type_param, c.signature)):
                     if len(result) >= target_count:
                         break
-                    if c.signature in used_sig:
+                    cid = id(c)
+                    if cid in selected_ids:
                         continue
                     result.append(c)
-                    used_sig.add(c.signature)
+                    selected_ids.add(cid)
         else:
             for c in sorted(remaining, key=lambda c: (c.type_param, c.signature)):
                 if len(result) >= target_count:
                     break
-                if c.signature in used_sig:
+                cid = id(c)
+                if cid in selected_ids:
                     continue
                 result.append(c)
-                used_sig.add(c.signature)
+                selected_ids.add(cid)
 
         return result[:target_count]
 
