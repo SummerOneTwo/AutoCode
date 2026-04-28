@@ -12,7 +12,7 @@ import shutil
 import time
 from dataclasses import dataclass
 
-from ..utils.compiler import run_binary, run_binary_with_args
+from ..utils.compiler import RunResult, run_binary, run_binary_with_args
 from ..utils.platform import get_exe_extension
 from .base import Tool, ToolResult
 
@@ -733,8 +733,8 @@ class ProblemGenerateTestsTool(Tool):
         args: list[str],
         timeout: int,
         active_pids: set[int],
-    ) -> object:
-        last_result = None
+    ) -> RunResult:
+        last_result: RunResult | None = None
         for attempt in range(3):
             started_pid: int | None = None
             cancelled = False
@@ -761,7 +761,9 @@ class ProblemGenerateTestsTool(Tool):
             if not getattr(last_result, "error", None):
                 return last_result
             await asyncio.sleep(0.1 * (2**attempt))
-        return last_result
+        if last_result is not None:
+            return last_result
+        return RunResult(success=False, error="Generator execution returned no result")
 
     def _save_state(
         self,

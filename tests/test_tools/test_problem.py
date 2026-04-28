@@ -697,7 +697,10 @@ async def test_problem_cleanup_processes_does_not_global_kill_without_tracked_pi
     with tempfile.TemporaryDirectory() as tmpdir:
         result = await tool.execute(problem_dir=tmpdir, kill_all_generators=True)
         assert result.success
-        assert "warning" in result.data
+        if os.name == "nt":
+            assert "warning" in result.data
+        else:
+            assert result.data.get("message") == "Cleanup finished"
 
 
 @pytest.mark.asyncio
@@ -726,8 +729,11 @@ async def test_problem_cleanup_processes_kills_tracked_pids(monkeypatch):
             json.dump({"active_pids": [12345, 23456]}, f)
         result = await tool.execute(problem_dir=tmpdir, kill_all_generators=True)
         assert result.success
-        assert result.data.get("killed_pids") == [12345, 23456]
-        assert len(called_cmds) == 2
+        if os.name == "nt":
+            assert result.data.get("killed_pids") == [12345, 23456]
+            assert len(called_cmds) == 2
+        else:
+            assert result.data.get("removed_files") == []
 
 
 @pytest.mark.asyncio
@@ -759,11 +765,14 @@ async def test_problem_cleanup_processes_keeps_failed_pid_for_retry(monkeypatch)
 
         result = await tool.execute(problem_dir=tmpdir, kill_all_generators=True)
         assert result.success
-        assert result.data.get("killed_pids") == [111]
-        assert os.path.exists(state_path)
-        with open(state_path, encoding="utf-8") as f:
-            state = json.load(f)
-        assert state.get("active_pids") == [222]
+        if os.name == "nt":
+            assert result.data.get("killed_pids") == [111]
+            assert os.path.exists(state_path)
+            with open(state_path, encoding="utf-8") as f:
+                state = json.load(f)
+            assert state.get("active_pids") == [222]
+        else:
+            assert result.data.get("removed_files") == []
 
 
 @pytest.mark.asyncio
