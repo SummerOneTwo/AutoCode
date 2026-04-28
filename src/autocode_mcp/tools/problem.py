@@ -563,6 +563,11 @@ class ProblemGenerateTestsTool(Tool):
         else:
             final_tests = candidates
 
+        # 最终写盘前清理历史生成产物，防止 resume 场景残留旧编号样例。
+        clear_before_write_error = self._clear_generated_tests(tests_dir, normalized_answer_ext)
+        if clear_before_write_error:
+            return clear_before_write_error
+
         # 写入文件
         generated_tests = []
         test_manifest: list[dict[str, str | int]] = []
@@ -721,6 +726,8 @@ class ProblemGenerateTestsTool(Tool):
             return None, ToolResult.fail("answer_ext cannot be empty")
         if not ext.startswith("."):
             ext = f".{ext}"
+        if not any(ch != "." for ch in ext[1:]):
+            return None, ToolResult.fail("answer_ext must contain non-dot characters")
         if any(ch in ext for ch in ('/', '\\', ':', '*', '?', '"', "<", ">", "|")):
             return None, ToolResult.fail("answer_ext contains illegal characters")
         if ext == ".in":
@@ -758,7 +765,7 @@ class ProblemGenerateTestsTool(Tool):
                 # 取消路径保留 PID 到状态文件，供 cleanup 精准回收。
                 if started_pid is not None and not cancelled:
                     active_pids.discard(started_pid)
-            if not getattr(last_result, "error", None):
+            if last_result.success:
                 return last_result
             await asyncio.sleep(0.1 * (2**attempt))
         if last_result is not None:
@@ -1076,7 +1083,13 @@ class ProblemCleanupProcessesTool(Tool):
         if os.path.exists(state_path) and not pids:
             os.remove(state_path)
             removed_files.append(state_path)
-        return ToolResult.ok(removed_files=removed_files, message="Cleanup finished")
+        return ToolResult.ok(
+            removed_files=removed_files,
+            killed_pids=[],
+            failed_pids=[],
+            warning="PID termination is only supported on Windows" if kill_all_generators and os.name != "nt" else "",
+            message="Cleanup finished",
+        )
 
     def _load_cleanup_state(self, state_path: str) -> dict | None:
         if not os.path.exists(state_path):

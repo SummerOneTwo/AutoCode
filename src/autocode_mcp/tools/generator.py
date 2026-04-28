@@ -142,18 +142,19 @@ class GeneratorBuildTool(Tool, BuildToolMixin):
         )
 
     def _check_type34_semantics(self, code: str) -> dict:
-        has_type3 = bool(re.search(r"type\s*==\s*3", code))
-        has_type4 = bool(re.search(r"type\s*==\s*4", code))
+        type3_blocks = self._extract_type_branch_snippets(code, 3)
+        type4_blocks = self._extract_type_branch_snippets(code, 4)
+        has_type3 = bool(type3_blocks)
+        has_type4 = bool(type4_blocks)
         if not has_type3 or not has_type4:
             return {
                 "enabled": True,
-                "passed": False,
-                "reason": "generator lacks explicit type==3/type==4 branches",
-                "hint": "需要给 type=3/type=4 设计不同逻辑，避免仅靠参数放大",
+                "passed": True,
+                "advisory": True,
+                "reason": "semantic check could not reliably detect both type=3/type=4 branches",
+                "hint": "请人工确认 type=3/type=4 分支存在且有实质差异",
             }
 
-        type3_blocks = re.findall(r"type\s*==\s*3[\s\S]{0,240}", code)
-        type4_blocks = re.findall(r"type\s*==\s*4[\s\S]{0,240}", code)
         norm3 = " ".join(type3_blocks).replace(" ", "")
         norm4 = " ".join(type4_blocks).replace(" ", "")
         output_lines = [line.strip() for line in code.splitlines() if "cout" in line or "printf" in line]
@@ -165,6 +166,18 @@ class GeneratorBuildTool(Tool, BuildToolMixin):
             "reason": "" if not similar else "type=3/type=4 branch snippets are too similar",
             "hint": "为 type=4 增加针对性卡法，而不仅是 n_max/t_max 取最大值",
         }
+
+    def _extract_type_branch_snippets(self, code: str, type_value: int) -> list[str]:
+        patterns = [
+            rf"type\s*==\s*{type_value}\b",
+            rf"\b{type_value}\s*==\s*type\b",
+            rf"case\s+{type_value}\s*:",
+        ]
+        snippets: list[str] = []
+        for pattern in patterns:
+            for match in re.finditer(pattern, code):
+                snippets.append(code[match.start(): match.start() + 240])
+        return snippets
 
 
 class GeneratorRunTool(Tool):

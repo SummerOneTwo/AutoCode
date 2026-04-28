@@ -493,16 +493,33 @@ class ProblemVerifyTestsTool(Tool):
         }
 
     def _resolve_answer_ext(self, tests_dir: str, answer_ext: str | None) -> str:
-        if answer_ext:
-            return answer_ext if answer_ext.startswith(".") else f".{answer_ext}"
+        normalized = self._normalize_answer_ext(answer_ext)
+        if normalized:
+            return normalized
         manifest_path = os.path.join(tests_dir, _TEST_MANIFEST_FILENAME)
         if os.path.exists(manifest_path):
             try:
                 with open(manifest_path, encoding="utf-8") as f:
                     manifest = json.load(f)
-                ext = manifest.get("answer_ext")
-                if isinstance(ext, str) and ext:
-                    return ext if ext.startswith(".") else f".{ext}"
+                ext = self._normalize_answer_ext(manifest.get("answer_ext"))
+                if ext:
+                    return ext
             except (json.JSONDecodeError, OSError):
                 pass
         return ".ans"
+
+    def _normalize_answer_ext(self, answer_ext: str | None) -> str | None:
+        if not isinstance(answer_ext, str):
+            return None
+        ext = answer_ext.strip()
+        if not ext:
+            return None
+        if not ext.startswith("."):
+            ext = f".{ext}"
+        if not any(ch != "." for ch in ext[1:]):
+            return None
+        if any(ch in ext for ch in ('/', '\\', ':', '*', '?', '"', "<", ">", "|")):
+            return None
+        if ext == ".in":
+            return None
+        return ext
