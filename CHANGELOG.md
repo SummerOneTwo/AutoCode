@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-04-29
+
+### Features
+
+- **`problem_generate_tests` 稳定性与可恢复性**
+  - 新增 `answer_ext`（答案文件后缀，默认 `.ans`，可配置为 `.out` 等），贯穿生成、清理、manifest 与 Polygon 打包路径。
+  - 新增 `resume`、`hard_timeout_seconds`、`checkpoint_every`：支持 checkpoint 落盘、硬超时后保留状态、中断后可续跑。
+  - 子进程 PID 跟踪（`active_pids`），供精准清理残留生成器进程。
+- **`problem_cleanup_processes` 工具**：按状态文件中记录的 PID 清理残留生成器（Windows `taskkill` / POSIX `kill`），更新 `active_pids` 时保留 checkpoint 其它字段，避免破坏 `resume`。
+- **`problem_verify_tests`**
+  - 支持 `answer_ext` 与 manifest 推断；`file_count` 正确处理多段后缀（如 `.a.out`）。
+  - 新增 `limit_semantics`：基于 manifest 中 type=3/4 的 signature 重叠度做语义质量提示。
+- **`generator_build`**
+  - 可选 `enable_semantic_check` / `strict_semantic_check`：对 type=3/type=4 分支做静态语义差异检查（含 `case N:`、`N == type` 等常见写法）；不确定时以 advisory 提示而非一律失败。
+- **MCP 服务端**：工具调用被取消时返回结构化结果并提示 `resume`。
+- **执行与 Windows Job**：`run_binary` / `run_binary_with_args` 支持 `process_start_hook`；取消路径强制终止子进程；`WinJobObject.close()` 文档与注释对齐 `KILL_ON_JOB_CLOSE` 语义。
+
+### Improvements
+
+- **`problem_pack_polygon`**：从 manifest 读取的 `answer_ext` 经规范化校验，写入 `problem.xml` 时做 XML 转义，避免脏数据破坏打包文件。
+- **文档与工作流**：README、CLAUDE.md、workflow skill、agent、prompts、`workflow_guard` 同步说明新参数、新工具与长耗时任务注意事项。
+
 ## [0.8.0] - 2026-04-28
 
 ### Improvements
