@@ -776,6 +776,52 @@ async def test_problem_cleanup_processes_keeps_failed_pid_for_retry(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_problem_cleanup_processes_preserves_checkpoint_fields(monkeypatch):
+    """cleanup 更新 active_pids 时不应覆盖 checkpoint 其他字段。"""
+    tool = ProblemCleanupProcessesTool()
+
+    class _FakeProc:
+        returncode = 0
+
+        async def communicate(self):
+            return b"ok", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return _FakeProc()
+
+    monkeypatch.setattr("autocode_mcp.tools.problem.asyncio.create_subprocess_exec", fake_create_subprocess_exec)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tests_dir = os.path.join(tmpdir, "tests")
+        os.makedirs(tests_dir, exist_ok=True)
+        state_path = os.path.join(tests_dir, ".autocode_generate_state.json")
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "phase": "partial",
+                    "next_seed": 9,
+                    "answer_ext": ".out",
+                    "candidates": [{"signature": "x"}],
+                    "errors": [{"seed": 1, "error": "e"}],
+                    "active_pids": [555],
+                },
+                f,
+            )
+
+        result = await tool.execute(problem_dir=tmpdir, kill_all_generators=True)
+        assert result.success
+        with open(state_path, encoding="utf-8") as f:
+            state = json.load(f)
+        if os.name == "nt":
+            assert state.get("active_pids") == []
+        else:
+            assert state.get("active_pids") == [555]
+        assert state.get("phase") == "partial"
+        assert state.get("next_seed") == 9
+        assert state.get("answer_ext") == ".out"
+
+
+@pytest.mark.asyncio
 async def test_problem_generate_tests_run_with_retry_keeps_pid_on_cancel(monkeypatch):
     """取消时 _run_with_retry 应保留 active_pids 供后续 cleanup 使用。"""
     tool = ProblemGenerateTestsTool()
@@ -860,6 +906,30 @@ async def test_problem_pack_polygon_dynamic_test_count():
             content = f.read()
             assert "<test-count>5</test-count>" in content
             assert "<test-count>20</test-count>" not in content
+
+
+@pytest.mark.asyncio
+async def test_problem_pack_polygon_sanitizes_answer_ext_from_manifest():
+    """manifest 中非法 answer_ext 不应污染 problem.xml。"""
+    create_tool = ProblemCreateTool()
+    pack_tool = ProblemPackPolygonTool()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        problem_dir = os.path.join(tmpdir, "pack_ext_sanitize")
+        await create_tool.execute(problem_dir=problem_dir, problem_name="Pack & Test")
+        tests_dir = os.path.join(problem_dir, "tests")
+        os.makedirs(tests_dir, exist_ok=True)
+        with open(os.path.join(tests_dir, "01.in"), "w", encoding="utf-8") as f:
+            f.write("1\n")
+        with open(os.path.join(tests_dir, ".autocode_tests_manifest.json"), "w", encoding="utf-8") as f:
+            json.dump({"answer_ext": ".bad<ext>"}, f)
+
+        result = await pack_tool.execute(problem_dir=problem_dir)
+        assert result.success
+        xml_path = os.path.join(problem_dir, "problem.xml")
+        with open(xml_path, encoding="utf-8") as f:
+            content = f.read()
+        assert "<answer-path-pattern>tests/%02d.ans</answer-path-pattern>" in content
 
 
 @pytest.mark.asyncio

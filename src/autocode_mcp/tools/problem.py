@@ -9,8 +9,10 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import time
 from dataclasses import dataclass
+from xml.sax.saxutils import escape
 
 from ..utils.compiler import RunResult, run_binary, run_binary_with_args
 from ..utils.platform import get_exe_extension
@@ -31,6 +33,22 @@ class CandidateTest:
 _LIMIT_STRATEGY_TYPES = frozenset({"3", "4"})
 _TEST_MANIFEST_FILENAME = ".autocode_tests_manifest.json"
 _GENERATE_STATE_FILENAME = ".autocode_generate_state.json"
+_POSIX_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
+
+
+def _normalize_answer_ext_value(answer_ext: str | None) -> str | None:
+    ext = (answer_ext or "").strip()
+    if not ext:
+        return None
+    if not ext.startswith("."):
+        ext = f".{ext}"
+    if not any(ch != "." for ch in ext[1:]):
+        return None
+    if any(ch in ext for ch in ('/', '\\', ':', '*', '?', '"', "<", ">", "|", "&")):
+        return None
+    if ext == ".in":
+        return None
+    return ext
 
 
 class ProblemCreateTool(Tool):
@@ -721,17 +739,9 @@ class ProblemGenerateTestsTool(Tool):
         return None
 
     def _normalize_answer_ext(self, answer_ext: str) -> tuple[str | None, ToolResult | None]:
-        ext = (answer_ext or ".ans").strip()
+        ext = _normalize_answer_ext_value(answer_ext or ".ans")
         if not ext:
-            return None, ToolResult.fail("answer_ext cannot be empty")
-        if not ext.startswith("."):
-            ext = f".{ext}"
-        if not any(ch != "." for ch in ext[1:]):
-            return None, ToolResult.fail("answer_ext must contain non-dot characters")
-        if any(ch in ext for ch in ('/', '\\', ':', '*', '?', '"', "<", ">", "|")):
-            return None, ToolResult.fail("answer_ext contains illegal characters")
-        if ext == ".in":
-            return None, ToolResult.fail("answer_ext cannot be .in")
+            return None, ToolResult.fail("invalid answer_ext")
         return ext, None
 
     async def _run_with_retry(
@@ -1038,38 +1048,48 @@ class ProblemCleanupProcessesTool(Tool):
         pids = state.get("active_pids", []) if isinstance(state, dict) else []
         if not isinstance(pids, list):
             pids = []
-        if kill_all_generators and os.name == "nt":
+        if kill_all_generators:
             try:
                 killed: list[int] = []
                 failed: list[dict[str, str | int]] = []
                 for pid in pids:
                     if not isinstance(pid, int) or pid <= 0:
                         continue
-                    proc = await asyncio.create_subprocess_exec(
-                        "taskkill",
-                        "/PID",
-                        str(pid),
-                        "/F",
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout, stderr = await proc.communicate()
-                    if proc.returncode == 0:
-                        killed.append(pid)
-                    else:
-                        failed.append(
-                            {
-                                "pid": pid,
-                                "stdout": stdout.decode("utf-8", errors="replace"),
-                                "stderr": stderr.decode("utf-8", errors="replace"),
-                            }
+                    if os.name == "nt":
+                        proc = await asyncio.create_subprocess_exec(
+                            "taskkill",
+                            "/PID",
+                            str(pid),
+                            "/F",
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
                         )
+                        stdout, stderr = await proc.communicate()
+                        if proc.returncode == 0:
+                            killed.append(pid)
+                        else:
+                            failed.append(
+                                {
+                                    "pid": pid,
+                                    "stdout": stdout.decode("utf-8", errors="replace"),
+                                    "stderr": stderr.decode("utf-8", errors="replace"),
+                                }
+                            )
+                    else:
+                        try:
+                            os.kill(pid, _POSIX_KILL_SIGNAL)
+                            killed.append(pid)
+                        except OSError as exc:
+                            failed.append(
+                                {
+                                    "pid": pid,
+                                    "stdout": "",
+                                    "stderr": str(exc),
+                                }
+                            )
                 # 仅移除已成功清理的 PID；失败 PID 保留，支持后续重试。
                 remaining_pids = [pid for pid in pids if isinstance(pid, int) and pid not in killed]
                 self._write_cleanup_state(state_path, remaining_pids)
-                if not remaining_pids and os.path.exists(state_path):
-                    os.remove(state_path)
-                    removed_files.append(state_path)
                 return ToolResult.ok(
                     removed_files=removed_files,
                     killed_pids=killed,
@@ -1079,15 +1099,12 @@ class ProblemCleanupProcessesTool(Tool):
                 )
             except Exception as exc:
                 return ToolResult.fail(f"cleanup failed: {exc}", removed_files=removed_files)
-        # 非 Windows 或未请求 kill：仅在无 PID 时删除空状态文件。
-        if os.path.exists(state_path) and not pids:
-            os.remove(state_path)
-            removed_files.append(state_path)
+        # 未请求 kill：不删除 checkpoint，仅返回状态。
         return ToolResult.ok(
             removed_files=removed_files,
             killed_pids=[],
             failed_pids=[],
-            warning="PID termination is only supported on Windows" if kill_all_generators and os.name != "nt" else "",
+            warning="",
             message="Cleanup finished",
         )
 
@@ -1105,8 +1122,12 @@ class ProblemCleanupProcessesTool(Tool):
 
     def _write_cleanup_state(self, state_path: str, remaining_pids: list[int]) -> None:
         os.makedirs(os.path.dirname(state_path), exist_ok=True)
+        state = self._load_cleanup_state(state_path) or {}
+        if not isinstance(state, dict):
+            state = {}
+        state["active_pids"] = remaining_pids
         with open(state_path, "w", encoding="utf-8") as f:
-            json.dump({"active_pids": remaining_pids}, f, ensure_ascii=False, indent=2)
+            json.dump(state, f, ensure_ascii=False, indent=2)
 
 
 class ProblemPackPolygonTool(Tool):
@@ -1219,9 +1240,7 @@ class ProblemPackPolygonTool(Tool):
                     try:
                         with open(manifest_path, encoding="utf-8") as mf:
                             manifest = json.load(mf)
-                        answer_ext = str(manifest.get("answer_ext", ".ans"))
-                        if not answer_ext.startswith("."):
-                            answer_ext = f".{answer_ext}"
+                        answer_ext = _normalize_answer_ext_value(str(manifest.get("answer_ext", ".ans"))) or ".ans"
                     except (OSError, json.JSONDecodeError):
                         answer_ext = ".ans"
             else:
@@ -1229,10 +1248,12 @@ class ProblemPackPolygonTool(Tool):
                 answer_ext = ".ans"
 
             problem_name = os.path.basename(problem_dir)
+            xml_problem_name = escape(problem_name, {'"': "&quot;"})
+            xml_answer_ext = escape(answer_ext, {'"': "&quot;"})
             xml_content = f'''<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<problem revision="1" short-name="{problem_name}">
+<problem revision="1" short-name="{xml_problem_name}">
     <names>
-        <name language="chinese" value="{problem_name}"/>
+        <name language="chinese" value="{xml_problem_name}"/>
     </names>
     <statements>
         <statement charset="UTF-8" language="chinese" mathjax="true" path="statements/README.md" type="application/x-tex"/>
@@ -1243,7 +1264,7 @@ class ProblemPackPolygonTool(Tool):
             <memory-limit>{memory_limit_bytes}</memory-limit>
             <test-count>{actual_test_count}</test-count>
             <input-path-pattern>tests/%02d.in</input-path-pattern>
-            <answer-path-pattern>tests/%02d{answer_ext}</answer-path-pattern>
+            <answer-path-pattern>tests/%02d{xml_answer_ext}</answer-path-pattern>
         </testset>
     </judging>
     <files>

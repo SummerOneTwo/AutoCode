@@ -360,7 +360,8 @@ async def _run_process(
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 
-        # 正常完成后只关闭 Job Handle
+        # 正常完成后关闭 Job Handle；若 Job 配置了 KILL_ON_JOB_CLOSE，
+        # 关闭时仍可能终止 Job 中尚未退出的子进程。
         if job:
             job.close()
 
