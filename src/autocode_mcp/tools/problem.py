@@ -530,8 +530,16 @@ class ProblemGenerateTestsTool(Tool):
                     timeout=timeout,
                     active_pids=active_pids,
                 )
-                if gen_result.timed_out or not gen_result.stdout.strip():
-                    errors.append((seed, f"Generator failed: {gen_result.stderr}"))
+                return_code = gen_result.return_code
+                if gen_result.timed_out or not gen_result.success or not gen_result.stdout.strip():
+                    errors.append(
+                        (
+                            seed,
+                            "Generator failed: "
+                            f"return_code={return_code}, "
+                            f"stderr={gen_result.stderr}",
+                        )
+                    )
                     seed += 1
                     continue
 
@@ -1296,7 +1304,24 @@ class ProblemPackPolygonTool(Tool):
                 require_tests_verified = True
                 min_limit_case_ratio = 0.5
         min_limit_case_ratio = min(1.0, max(0.0, min_limit_case_ratio))
+        required_limit_semantics = True
+        required_wrong_solution_kill = True
+        required_validator_check = True
+        if os.path.exists(problem_manifest_path):
+            try:
+                with open(problem_manifest_path, encoding="utf-8") as pmf:
+                    problem_manifest = json.load(pmf)
+                quality_gates = problem_manifest.get("quality_gates", {})
+                if isinstance(quality_gates, dict):
+                    required_limit_semantics = bool(quality_gates.get("require_limit_semantics", True))
+                    required_wrong_solution_kill = bool(quality_gates.get("require_wrong_solution_kill", True))
+                    required_validator_check = bool(quality_gates.get("require_validator_check", True))
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                required_limit_semantics = True
+                required_wrong_solution_kill = True
+                required_validator_check = True
 
+        workflow_state: dict[str, object] = {}
         if os.path.exists(workflow_state_path):
             try:
                 with open(workflow_state_path, encoding="utf-8") as sf:
@@ -1304,10 +1329,52 @@ class ProblemPackPolygonTool(Tool):
                 if require_tests_verified and not bool(workflow_state.get("tests_verified", False)):
                     return ToolResult.fail(
                         "tests are not verified, run problem_verify_tests first",
+                        stage="problem_pack_polygon",
+                        gate="require_tests_verified",
+                        required=True,
+                        actual=False,
                         tests_verified=False,
                     )
             except (OSError, json.JSONDecodeError):
-                return ToolResult.fail("invalid workflow state file, rerun verification steps")
+                return ToolResult.fail(
+                    "invalid workflow state file, rerun verification steps",
+                    stage="problem_pack_polygon",
+                    gate="workflow_state_readable",
+                    required=True,
+                    actual=False,
+                )
+        elif require_tests_verified:
+            return ToolResult.fail(
+                "workflow state missing, run problem_verify_tests first",
+                stage="problem_pack_polygon",
+                gate="require_tests_verified",
+                required=True,
+                actual=False,
+                workflow_state_path=workflow_state_path,
+            )
+
+        verify_signals = workflow_state.get("verify_signals", {}) if isinstance(workflow_state, dict) else {}
+        if not isinstance(verify_signals, dict):
+            verify_signals = {}
+        signal_rules = [
+            ("limit_semantics", required_limit_semantics),
+            ("wrong_solution_kill", required_wrong_solution_kill),
+            ("validator_check", required_validator_check),
+        ]
+        for signal_name, required in signal_rules:
+            if not required:
+                continue
+            signal_data = verify_signals.get(signal_name, {})
+            if not isinstance(signal_data, dict):
+                signal_data = {}
+            if not bool(signal_data.get("executed")) or not bool(signal_data.get("passed")):
+                return ToolResult.fail(
+                    f"verification signal `{signal_name}` not satisfied, run problem_verify_tests first",
+                    stage="problem_pack_polygon",
+                    gate=signal_name,
+                    required=True,
+                    actual=signal_data,
+                )
 
         limit_ratio_from_manifest = None
         if os.path.exists(manifest_path):
@@ -1328,6 +1395,10 @@ class ProblemPackPolygonTool(Tool):
         if limit_ratio_from_manifest is not None and limit_ratio_from_manifest < min_limit_case_ratio:
             return ToolResult.fail(
                 "limit case ratio is below quality_gates.min_limit_case_ratio",
+                stage="problem_pack_polygon",
+                gate="min_limit_case_ratio",
+                required=min_limit_case_ratio,
+                actual=limit_ratio_from_manifest,
                 limit_case_ratio=limit_ratio_from_manifest,
                 min_limit_case_ratio=min_limit_case_ratio,
             )

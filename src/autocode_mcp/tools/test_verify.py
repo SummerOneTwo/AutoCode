@@ -203,11 +203,13 @@ class ProblemVerifyTestsTool(Tool):
         # 汇总
         total_checks = len(results)
         passed_checks = sum(1 for r in results.values() if r["passed"])
+        quality_signals = self._build_quality_signals(verify_types, results)
 
         if all_passed:
             return ToolResult.ok(
                 passed=True,
                 results=results,
+                quality_signals=quality_signals,
                 total_checks=total_checks,
                 passed_checks=passed_checks,
                 tests_dir=tests_dir,
@@ -220,12 +222,35 @@ class ProblemVerifyTestsTool(Tool):
                 f"{passed_checks}/{total_checks} checks passed",
                 passed=False,
                 results=results,
+                quality_signals=quality_signals,
                 total_checks=total_checks,
                 passed_checks=passed_checks,
                 tests_dir=tests_dir,
                 sol_name=effective_sol_name,
                 limit_ratio_enabled=enable_limit_ratio,
             )
+
+    def _build_quality_signals(self, verify_types: list[str], results: dict) -> dict[str, dict]:
+        signal_map = {
+            "file_count": "file_count",
+            "answer_consistency": "answer_consistency",
+            "validator": "validator_check",
+            "no_empty": "no_empty",
+            "limit_ratio": "limit_ratio",
+            "limit_semantics": "limit_semantics",
+            "wrong_solution_kill": "wrong_solution_kill",
+        }
+        verify_set = set(verify_types)
+        signals: dict[str, dict] = {}
+        for verify_name, signal_name in signal_map.items():
+            result = results.get(verify_name)
+            executed = verify_name in verify_set and isinstance(result, dict)
+            signals[signal_name] = {
+                "executed": executed,
+                "passed": bool(result.get("passed")) if executed else False,
+                "evidence": result if executed else {},
+            }
+        return signals
 
     def _check_file_count(self, tests_dir: str, answer_ext: str) -> dict:
         """检查文件完整性：每个 .in 有对应的 answer_ext。"""

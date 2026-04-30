@@ -373,6 +373,17 @@ class StressTestRunTool(Tool):
                     "seed": seed,
                 }
 
+            if gen_result.timed_out or not gen_result.success:
+                return {
+                    "success": False,
+                    "error": "Generator exited with non-zero status",
+                    "stderr": gen_result.stderr,
+                    "stdout": gen_result.stdout,
+                    "cmd_args": cmd_args,
+                    "seed": seed,
+                    "return_code": gen_result.return_code,
+                }
+
             if not gen_result.stdout.strip():
                 return {
                     "success": False,

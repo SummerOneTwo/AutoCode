@@ -301,6 +301,7 @@ class GeneratorRunTool(Tool):
 
         generated_inputs = []
         signatures = set()  # 用于去重
+        generator_failures: list[dict[str, object]] = []
 
         # 策略映射到 type 参数
         strategy_type_map = {
@@ -318,7 +319,7 @@ class GeneratorRunTool(Tool):
             attempts += 1
 
             # 选择策略
-            strategy = strategies[attempts % len(strategies)]
+            strategy = strategies[(attempts - 1) % len(strategies)]
             type_param = strategy_type_map.get(strategy, "2")
 
             # 运行 generator
@@ -331,9 +332,30 @@ class GeneratorRunTool(Tool):
                 timeout=10,
             )
 
-            # 只要有输出就接受（某些 generator 可能返回非零退出码但仍产生有效输出）
+            if not gen_result.success:
+                generator_failures.append(
+                    {
+                        "seed": seed,
+                        "strategy": strategy,
+                        "return_code": gen_result.return_code,
+                        "stderr": (gen_result.stderr or "")[:200],
+                    }
+                )
+                seed += 1
+                continue
+
             input_data = gen_result.stdout
             if not input_data or not input_data.strip():
+                generator_failures.append(
+                    {
+                        "seed": seed,
+                        "strategy": strategy,
+                        "return_code": gen_result.return_code,
+                        "stderr": (gen_result.stderr or "")[:200],
+                        "reason": "empty_stdout",
+                    }
+                )
+                seed += 1
                 continue
 
             # 计算 signature 用于去重
@@ -362,5 +384,6 @@ class GeneratorRunTool(Tool):
             test_count=test_count,
             inputs=generated_inputs[:test_count],
             strategies_used=strategies,
+            generator_failures=generator_failures[-20:],
             message=f"Generated {len(generated_inputs)} test inputs",
         )

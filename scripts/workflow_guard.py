@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,9 @@ DEFAULT_QUALITY_GATES = {
     "require_stress_passed": True,
     "require_validation_passed": True,
     "require_tests_verified": True,
+    "require_limit_semantics": True,
+    "require_wrong_solution_kill": True,
+    "require_validator_check": True,
     "min_limit_case_ratio": 0.5,
 }
 
@@ -93,6 +97,8 @@ def infer_state(problem_dir: str) -> dict[str, Any]:
         "sol_built": False,
         "brute_built": False,
         "solution_analyzed": False,
+        "std_audited": False,
+        "brute_audited": False,
         "validator_ready": False,
         "validator_accuracy": None,
         "generator_built": False,
@@ -108,8 +114,10 @@ def infer_state(problem_dir: str) -> dict[str, Any]:
         "tests_generated": False,
         "generated_test_count": 0,
         "tests_verified": False,
+        "verify_signals": {},
         "packaged": (root / "problem.xml").exists(),
         "quality_gates": _extract_quality_gates(manifest),
+        "history": [],
     }
 
 
@@ -217,6 +225,10 @@ def _tests_verified_required_gate_ok(state: dict[str, Any], _: dict[str, Any]) -
     )
 
 
+def _audit_gate_ok(state: dict[str, Any], _: dict[str, Any]) -> bool:
+    return bool(state.get("std_audited")) and bool(state.get("brute_audited"))
+
+
 def _min_limit_ratio_gate_ok(state: dict[str, Any], _: dict[str, Any]) -> bool:
     gates = state.get("quality_gates", {})
     if not isinstance(gates, dict):
@@ -236,6 +248,53 @@ def _min_limit_ratio_gate_ok(state: dict[str, Any], _: dict[str, Any]) -> bool:
     return ratio_val >= required
 
 
+def _required_verify_signal_ok(state: dict[str, Any], gate_key: str, signal_name: str) -> bool:
+    if not _quality_gate_enabled(state, gate_key):
+        return True
+    verify_signals = state.get("verify_signals", {})
+    if not isinstance(verify_signals, dict):
+        return False
+    signal = verify_signals.get(signal_name, {})
+    if not isinstance(signal, dict):
+        return False
+    return bool(signal.get("executed")) and bool(signal.get("passed"))
+
+
+def _limit_semantics_gate_ok(state: dict[str, Any], _: dict[str, Any]) -> bool:
+    return _required_verify_signal_ok(state, "require_limit_semantics", "limit_semantics")
+
+
+def _wrong_solution_kill_gate_ok(state: dict[str, Any], _: dict[str, Any]) -> bool:
+    return _required_verify_signal_ok(state, "require_wrong_solution_kill", "wrong_solution_kill")
+
+
+def _validator_check_gate_ok(state: dict[str, Any], _: dict[str, Any]) -> bool:
+    return _required_verify_signal_ok(state, "require_validator_check", "validator_check")
+
+
+def _append_history(
+    state: dict[str, Any],
+    *,
+    tool: str,
+    success: bool,
+    key_metrics: dict[str, Any] | None = None,
+    gate_result: str = "n/a",
+) -> None:
+    history = state.get("history")
+    if not isinstance(history, list):
+        history = []
+    history.append(
+        {
+            "tool": tool,
+            "success": success,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "gate_result": gate_result,
+            "key_metrics": key_metrics or {},
+        }
+    )
+    state["history"] = history[-200:]
+
+
 PRE_GATES: dict[str, list[Gate]] = {
     "solution_build": [
         (lambda s, i: bool(s.get("created")), "必须先运行 problem_create 创建题目目录。"),
@@ -247,6 +306,16 @@ PRE_GATES: dict[str, list[Gate]] = {
     "solution_analyze": [
         (lambda s, i: bool(s.get("sol_built")), "必须先构建标准解 sol，再进行复杂度分析。"),
     ],
+    "solution_audit_std": [
+        (lambda s, i: bool(s.get("sol_built")), "必须先构建标准解 sol。"),
+        (lambda s, i: bool(s.get("solution_analyzed")), "必须先运行 solution_analyze。"),
+    ],
+    "solution_audit_brute": [
+        (lambda s, i: bool(s.get("sol_built")), "必须先构建标准解 sol。"),
+        (lambda s, i: bool(s.get("brute_built")), "必须先构建 brute。"),
+        (lambda s, i: bool(s.get("solution_analyzed")), "必须先运行 solution_analyze。"),
+        (lambda s, i: bool(s.get("std_audited")), "必须先完成 solution_audit_std。"),
+    ],
     "validator_select": [
         (lambda s, i: bool(s.get("validator_ready")), "必须先完成 validator_build 才能选择校验器版本。"),
     ],
@@ -254,14 +323,23 @@ PRE_GATES: dict[str, list[Gate]] = {
         (lambda s, i: bool(s.get("created")), "必须先运行 problem_create 创建题目目录。"),
         (lambda s, i: bool(s.get("sol_built")), "必须先构建标准解 sol。"),
         (lambda s, i: bool(s.get("solution_analyzed")), "必须先运行 solution_analyze，再构建 validator。"),
+        (_audit_gate_ok, "必须先完成 solution_audit_std 与 solution_audit_brute。"),
         (_is_non_interactive, "交互题不应构建 validator，应改用 interactor_build。"),
         (lambda s, i: bool(s.get("brute_built")), "必须先构建 brute，再构建 validator。"),
     ],
     "interactor_build": [
         (lambda s, i: bool(s.get("created")), "必须先运行 problem_create 创建题目目录。"),
         (_is_interactive, "只有交互题可运行 interactor_build。请在 problem_create 设 interactive=true。"),
+        (lambda s, i: bool(s.get("sol_built")), "必须先构建标准解 sol。"),
+        (lambda s, i: bool(s.get("brute_built")), "必须先构建 brute。"),
+        (lambda s, i: bool(s.get("solution_analyzed")), "必须先运行 solution_analyze。"),
+        (_audit_gate_ok, "必须先完成 solution_audit_std 与 solution_audit_brute。"),
     ],
     "generator_build": [
+        (lambda s, i: bool(s.get("sol_built")), "必须先构建标准解 sol。"),
+        (lambda s, i: bool(s.get("brute_built")), "必须先构建 brute。"),
+        (lambda s, i: bool(s.get("solution_analyzed")), "必须先运行 solution_analyze。"),
+        (_audit_gate_ok, "必须先完成 solution_audit_std 与 solution_audit_brute。"),
         (
             _validator_gate_ok,
             "必须先完成 validator_build，并且 validator accuracy >= 0.9。",
@@ -274,6 +352,8 @@ PRE_GATES: dict[str, list[Gate]] = {
     "stress_test_run": [
         (lambda s, i: bool(s.get("sol_built")), "必须先构建标准解 sol。"),
         (lambda s, i: bool(s.get("brute_built")), "必须先构建 brute。"),
+        (lambda s, i: bool(s.get("solution_analyzed")), "必须先运行 solution_analyze。"),
+        (_audit_gate_ok, "必须先完成 solution_audit_std 与 solution_audit_brute。"),
         (
             _validator_gate_ok,
             "必须先完成 validator_build(accuracy >= 0.9)，再进行 stress_test_run。",
@@ -308,6 +388,9 @@ PRE_GATES: dict[str, list[Gate]] = {
         ),
         (_tests_verified_required_gate_ok, "必须先通过 problem_verify_tests(passed=true)，再进行打包。"),
         (_min_limit_ratio_gate_ok, "最终测试中的极限样例占比未达到 quality_gates.min_limit_case_ratio。"),
+        (_limit_semantics_gate_ok, "最终测试未通过 limit_semantics，不能打包。"),
+        (_wrong_solution_kill_gate_ok, "最终测试未通过 wrong_solution_kill，不能打包。"),
+        (_validator_check_gate_ok, "最终测试未通过 validator_check，不能打包。"),
     ],
 }
 
@@ -345,11 +428,25 @@ def post_tool(payload: dict[str, Any]) -> int:
         if not success:
             state["tests_generated"] = False
             state["generated_test_count"] = 0
+            _append_history(
+                state,
+                tool=short_name,
+                success=False,
+                gate_result="post",
+                key_metrics={"generated_test_count": 0},
+            )
             save_state(problem_dir, state)
             return 0
         generated_tests = data.get("generated_tests", [])
         state["tests_generated"] = bool(generated_tests)
         state["generated_test_count"] = len(generated_tests)
+        _append_history(
+            state,
+            tool=short_name,
+            success=True,
+            gate_result="post",
+            key_metrics={"generated_test_count": len(generated_tests)},
+        )
         save_state(problem_dir, state)
         return 0
 
@@ -357,6 +454,13 @@ def post_tool(payload: dict[str, Any]) -> int:
         state["statement_validated"] = data.get("statement_samples", {}).get("validated", False)
         state["sample_files_validated"] = data.get("sample_files", {}).get("validated", False)
         state["validation_passed"] = success
+        _append_history(
+            state,
+            tool=short_name,
+            success=success,
+            gate_result="post",
+            key_metrics={"validation_passed": success},
+        )
         save_state(problem_dir, state)
         return 0
 
@@ -380,8 +484,23 @@ def post_tool(payload: dict[str, Any]) -> int:
                 ratio_ok = float(state.get("limit_case_ratio")) >= min_limit_ratio
         except (TypeError, ValueError):
             ratio_ok = False
+        quality_signals = data.get("quality_signals", {})
+        if isinstance(quality_signals, dict):
+            state["verify_signals"] = quality_signals
+        else:
+            state["verify_signals"] = {}
         state["tests_verified"] = success and bool(data.get("passed", False))
         state["tests_verified"] = state["tests_verified"] and ratio_ok
+        _append_history(
+            state,
+            tool=short_name,
+            success=state["tests_verified"],
+            gate_result="post",
+            key_metrics={
+                "tests_verified": state["tests_verified"],
+                "limit_case_ratio": state.get("limit_case_ratio"),
+            },
+        )
         save_state(problem_dir, state)
         return 0
 
@@ -389,6 +508,10 @@ def post_tool(payload: dict[str, Any]) -> int:
         if short_name == "validator_build":
             state["validator_ready"] = False
             state["validator_accuracy"] = None
+        elif short_name == "solution_audit_std":
+            state["std_audited"] = False
+        elif short_name == "solution_audit_brute":
+            state["brute_audited"] = False
         elif short_name == "generator_build":
             state["generator_built"] = False
         elif short_name == "stress_test_run":
@@ -400,6 +523,7 @@ def post_tool(payload: dict[str, Any]) -> int:
             state["checker_ready"] = False
         elif short_name == "problem_pack_polygon":
             state["packaged"] = False
+        _append_history(state, tool=short_name, success=False, gate_result="post")
         save_state(problem_dir, state)
         return 0
 
@@ -410,10 +534,20 @@ def post_tool(payload: dict[str, Any]) -> int:
         solution_type = payload.get("tool_input", {}).get("solution_type")
         if solution_type == "sol":
             state["sol_built"] = True
+            state["solution_analyzed"] = False
+            state["std_audited"] = False
+            state["brute_audited"] = False
         elif solution_type == "brute":
             state["brute_built"] = True
+            state["brute_audited"] = False
     elif short_name == "solution_analyze":
         state["solution_analyzed"] = True
+        state["std_audited"] = False
+        state["brute_audited"] = False
+    elif short_name == "solution_audit_std":
+        state["std_audited"] = True
+    elif short_name == "solution_audit_brute":
+        state["brute_audited"] = True
     elif short_name == "validator_build":
         accuracy = data.get("accuracy")
         state["validator_accuracy"] = accuracy
@@ -437,6 +571,7 @@ def post_tool(payload: dict[str, Any]) -> int:
     elif short_name == "problem_pack_polygon":
         state["packaged"] = True
 
+    _append_history(state, tool=short_name, success=True, gate_result="post")
     save_state(problem_dir, state)
     return 0
 
