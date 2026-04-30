@@ -26,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增 skills：`idea-feasibility`、`solution-complexity-audit`、`stress-strategy`、`testdata-quality`、`statement-audit`。
   - 新增 agents：`autocode-idea-auditor`、`autocode-solution-auditor`、`autocode-package-auditor`。
 
+### Improvements
+
+- **质量门禁一致性修复**
+  - `workflow_guard.py` 与 `problem_pack_polygon` 的门禁语义对齐：统一读取并执行 `quality_gates`，避免 Hook 与工具层行为不一致。
+  - `problem_verify_tests` 结果回写状态时同步记录并校验 `limit_case_ratio`，确保后续打包门禁可基于阈值生效。
+  - `problem_pack_polygon` 增加最小自校验：测试输入/答案配对、题面与主解存在性、工作流验证状态检查。
+- **Agent / Skill 治理规范收敛**
+  - 新增 `skills/agent-skill-governance/SKILL.md`，定义 `agents/` 与 `skills/` 的统一语言、术语、结构、决策规则与审查清单。
+  - `agents/autocode-workflow.md` 去重并转为 orchestration 主责，workflow 细节收拢到 `skills/autocode-workflow/SKILL.md` 以降低双维护漂移。
+  - `skills/problem-validate/SKILL.md` 轻量化为标准 skill 形态，并新增 `skills/problem-validate/reference.md` 承载详细工具参考。
+- **技能文档一致性增强**
+  - 为 `stress-strategy`、`statement-audit`、`testdata-quality` 补齐 `Forbidden Behavior`。
+  - 统一 `type=3` 与 `type=4` 的语义边界定义（`type=4` 为针对性 worst-case / TLE 模式，不是简单参数拉满）。
+  - `solution-complexity-audit` 合并重叠判定语义，明确 `high_tle_risk` 判定方向（应为 `false` 或 `low`）。
+
 ## [0.9.0] - 2026-04-29
 
 ### Features
